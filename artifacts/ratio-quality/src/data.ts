@@ -21,6 +21,8 @@ export type Answer = {
   tasting?: Record<string, number>;
   /** Set when the same question failed at the previous approved visit of this branch. */
   recurringSuggested?: { inspectionId: string; date: string };
+  /** Text before the inspector accepted a writing-helper suggestion (audit). */
+  textHistory?: { field: 'observation' | 'recommendation'; original: string; accepted: string; at: string }[];
 };
 export type Question = { id: number; section: string; title: string; severity: Severity; criterion: string; inputType?: 'status' | 'numeric' | 'text' | 'single-choice' | 'multi-choice' | 'rating' | 'date' | 'photo'; options?: string[]; measurement?: { unit: string; min?: number; max?: number } };
 export type Inspection = {

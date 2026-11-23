@@ -19,6 +19,9 @@ await p.locator('.branch-option').first().click();
 await p.getByTestId('input-inspector').fill('مفتش الاختبار');
 await p.getByTestId('button-create-inspection').click();
 await p.waitForURL(/\/inspection\//);
+await p.waitForSelector('.coach'); await p.screenshot({ path: `${out}/e2e-coach.png` });
+for (let k = 0; k < 4; k++) await p.locator('.coach-actions .primary').click();
+assert.equal(await p.locator('.coach').count(), 0, 'coach marks close');
 for (let id = 1; id <= 46; id++) {
   if (id === 5) { await p.getByTestId(`answer-fail-${id}`).click(); await p.getByTestId(`input-observation-${id}`).fill('عصا التبخير غير نظيفة بعد الاستخدام'); }
   else await p.getByTestId(`answer-pass-${id}`).click();
