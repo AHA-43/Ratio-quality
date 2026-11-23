@@ -3,8 +3,10 @@ name: Nightly encrypted backup
 # from the FIREBASE_SERVICE_ACCOUNT secret, and keeps it as a workflow artifact for 90 days.
 # Restore: download the artifact, then  openssl enc -d -aes-256-cbc -pbkdf2 -pass env:KEY -in backup.json.enc -out backup.json
 on:
-  schedule: [{ cron: '17 23 * * *' }]
+  schedule: [{ cron: '17 23 * * *' }]   # runs once this file is on the default branch (main)
   workflow_dispatch:
+  push:
+    branches: [claude/ratio-quality-requirements-pb9ouc]   # until merged: back up after every release
 jobs:
   backup:
     runs-on: ubuntu-latest
