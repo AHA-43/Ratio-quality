@@ -16,10 +16,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/ratio-quality test
       - run: pnpm --filter @workspace/ratio-quality build
-      - name: Deploy hosting + Firestore rules
+      - name: Deploy hosting
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
-          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx --yes firebase-tools deploy --only hosting,firestore:rules --project ratio-quality
+          GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx --yes firebase-tools deploy --only hosting --project ratio-quality
           rm -f "$RUNNER_TEMP/sa.json"
