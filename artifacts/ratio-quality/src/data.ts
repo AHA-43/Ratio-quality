@@ -17,22 +17,42 @@ export type Answer = {
   severity: Severity;
   actual?: number;
   attachments: Attachment[];
+  /** 1–5 tasting sub-scores (Q27–31): الحلاوة، الحموضة، القوام، التوازن */
+  tasting?: Record<string, number>;
+  /** Set when the same question failed at the previous approved visit of this branch. */
+  recurringSuggested?: { inspectionId: string; date: string };
 };
 export type Question = { id: number; section: string; title: string; severity: Severity; criterion: string; inputType?: 'status' | 'numeric' | 'text' | 'single-choice' | 'multi-choice' | 'rating' | 'date' | 'photo'; options?: string[]; measurement?: { unit: string; min?: number; max?: number } };
 export type Inspection = {
   id: string; status: 'draft' | 'finalized'; branchId: string; branchName: string; inspector: string;
   date: string; type: string; shift: string; employees: number; answers: Record<number, Answer>;
   questionSnapshot: Question[]; createdAt: string; updatedAt: string; finalizedAt?: string;
+  /** Workflow: draft → submitted → approved, or returned to draft for correction. */
+  workflow?: 'submitted' | 'approved' | 'returned';
+  number?: string; inspectorUid?: string; inspectorEmail?: string; branchCode?: string;
+  startedAt?: string; checklistVersion?: string;
+  submittedAt?: string; approvedAt?: string; approvedBy?: { uid: string; name: string };
+  returnedAt?: string; returnReason?: string; returnedBy?: { uid: string; name: string };
+  snapshotHash?: string;
+  signatures?: {
+    inspector?: { name: string; image: string; at: string };
+    branch?: { name: string; image?: string; at: string; declinedReason?: string };
+  };
+  previous?: { inspectionId: string; date: string; score: number | null; classification: string | null };
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean };
-export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[] };
+export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
+  branchId?: string; createdAt?: string; history?: { status: string; at: string; by: string; note?: string }[]; verifiedBy?: string; verifiedAt?: string; equipmentId?: string; recurring?: boolean };
+export type Equipment = { id: string; branchId: string; branchName: string; category: string; manufacturer: string; model: string; serial?: string; installedAt?: string; status: 'يعمل' | 'يعمل بملاحظات' | 'متوقف' | 'خارج الخدمة'; lastMaintenance?: string; nextMaintenance?: string; log: { at: string; type: 'صيانة' | 'طلب صيانة' | 'ملاحظة فحص'; note: string; by: string }[]; updatedAt: string };
+export type Barista = { id: string; name: string; branchId: string; branchName: string; active: boolean; updatedAt: string };
+export type BaristaEval = { id: string; baristaId: string; baristaName: string; branchId: string; branchName: string; inspectionId: string; date: string; evaluator: string; evaluatorUid?: string; answers: Record<number, 'pass' | 'fail' | 'na'>; notes: string; updatedAt: string };
 type StandardsRecord = { id: 'standards'; questions: Question[]; version?: string };
 export const CHECKLIST_VERSION = 'official-pdf-v1';
 
 import { QUESTIONS } from './checklist';
 export { QUESTIONS, TASTING_SCORE_IDS, TASTING_SCORE_FIELDS } from './checklist';
 
-type StoreName = 'branches' | 'inspections' | 'actions' | 'settings';
+type StoreName = 'branches' | 'inspections' | 'actions' | 'settings' | 'equipment' | 'baristas' | 'baristaEvals';
 export interface InspectionRepository {
   list<T>(store: StoreName): Promise<T[]>;
   put<T extends { id: string }>(store: StoreName, value: T): Promise<void>;
@@ -55,6 +75,7 @@ class RatioDatabase extends Dexie {
       actions: 'id, status, inspectionId, dueDate',
       settings: 'id',
     });
+    this.version(2).stores({ equipment: 'id, branchId', baristas: 'id, branchId', baristaEvals: 'id, baristaId, inspectionId' });
   }
 }
 
@@ -102,8 +123,11 @@ export async function remove(store: StoreName, id: string) {
 /** After sign-in: bring down anything missing/newer from the cloud, then push local-only items up. */
 export async function syncAll() {
   if (!cloudEnabled || !isSignedIn()) return;
-  for (const store of ['branches', 'inspections', 'actions'] as const) {
-    const [cloud, local] = await Promise.all([pullAll(store), localRepository.list<{ id: string; updatedAt?: string }>(store)]);
+  for (const store of ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const) {
+    let cloud: Awaited<ReturnType<typeof pullAll>>;
+    // A store the user may not read (e.g. barista evaluations for inspectors) must not stop the others.
+    try { cloud = await pullAll(store); } catch { continue; }
+    const local = await localRepository.list<{ id: string; updatedAt?: string }>(store);
     const localById = new Map(local.map(x => [x.id, x]));
     const cloudIds = new Set(cloud.map(x => x.id));
     for (const c of cloud) {

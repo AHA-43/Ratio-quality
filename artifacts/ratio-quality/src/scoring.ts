@@ -18,7 +18,8 @@ export function calculateScore(questions: Question[], answers: Record<number, An
     const answer = answers[q.id];
     if (!answer || answer.value === null || (answer.value === 'na' && answer.initialValue !== 'fail')) continue;
     const effectiveValue = answer.initialValue === 'fail' ? 'fail' : answer.value;
-    const severity = effectiveValue === 'fail' ? answer.severity : q.severity;
+    // Severity always comes from the approved checklist, never from a per-answer override.
+    const severity = q.severity;
     const weight = WEIGHTS[severity];
     applicableWeight += weight;
     if (effectiveValue === 'pass') compliantWeight += weight;

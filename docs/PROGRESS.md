@@ -1,23 +1,35 @@
 # Ratio Quality — progress notes
 
-## Done in this pass (no cloud, no email, no deploy)
-- Checklist rebuilt from the official 46-question PDF: exact order, titles, severities (4 Critical / 32 Major / 10 Minor, total weight 210) and units. Only the two standards printed in the PDF are pre-filled (Q11 3–5 °C, Q12 90–150 ppm); everything else is "to be set from approved recipes".
-- Old provisional checklist saved on devices is replaced (`CHECKLIST_VERSION`); finalized inspections keep their own snapshots.
-- Scoring: classification uses the unrounded score (188/209 no longer shows as Excellent). Tests for structure, severities and 90/80/70 boundaries.
-- Corrective actions can no longer cycle Closed → Open.
-- Build no longer requires `PORT`/`BASE_PATH`; theme colour is brand navy `#07014F`.
-- `branches.master.json` (136 branches) generated from the approved workbook with every data problem flagged, not fixed: see `branch-import-report.md`.
+Live: https://ratio-quality.web.app — auto-deployed by GitHub Actions on every push to this branch.
+CI gate: unit tests (scoring, checklist, Excel export) + Firestore security-rules tests on the emulator.
 
-## Defaults I assumed (change if wrong)
-- N/A excluded from the denominator; a failure corrected during the visit stays a failure in the score.
-- Tasting sub-scores (Q27–31: sweetness, acidity, body, balance, 1–5) are informational; constants exist, UI not yet wired.
+## Implemented
+- Official 46-item checklist (PDF), versioned (`official-pdf-v1`); severity fixed by the checklist (not editable per answer).
+- Scoring: weights 10/5/1, N/A excluded, any failed Critical ⇒ غير مقبول, classification on unrounded value.
+- Branch master (136; 120 active), searchable by name/code; branch code saved on each inspection.
+- Firebase Auth (invite-only), Firestore sync (offline-first via Dexie), photo upload to Storage (when enabled).
+- Roles: admin / quality_manager / inspector + per-user "can approve". Project owner (earliest account) is set to admin by CI. Users page to manage roles.
+- Workflow: Draft → Submitted → Approved, with "return for correction" (reason recorded). Approved reports locked server-side (rules) with SHA-256 snapshot hash.
+- Sequential inspection numbers RQ-YYYY-NNNNN (transactional counter; offline drafts get LOCAL-… until online).
+- Electronic signatures: inspector + branch representative (or recorded reason if unable). Captures name, time, signature image. Not a certified legal signature.
+- Previous-visit card when choosing a branch; recurring-finding detection by question ID + branch (inspector confirms).
+- Tasting sub-scores 1–5 (Q27–31), informational only.
+- Corrective actions: statuses incl. مُسند, derived "overdue", default deadlines 24h/72h/7d by severity, change history, closure verification by quality leads only (enforced in rules), link to equipment.
+- Barista individual evaluations (Q37–46) per inspection, multiple baristas, history/trend, repeated skill gaps ⇒ training recommendation. Visible to evaluator + quality leads only (rules).
+- Equipment registry with maintenance log and maintenance requests.
+- Analytics dashboard with filters (date, branch, section, severity, inspector); excludes non-official checklist versions.
+- Exports from the saved record: PDF (print), Excel (4 sheets, filterable), PowerPoint (branded, per-finding slides, action plan, signatures). Share sheet on phones; ready-made Arabic email draft (mailto).
+- Append-only audit log (submit, approve, return, action changes, exports, user changes).
 
-## Still needs owner input before building
-Corrective-action clock start, recurring-finding window, roles & barista data access, signature fallback, retention period, data region, email provider, AI provider, licensed fonts (TT Fors, Volt Arabic) and vector logos, branch status for the 30 flagged rows.
+## Defaults assumed (change if wrong)
+- Branch-score uses the inspection's own Section 4 answers; individual barista scores are separate and do not change it.
+- Deadline clock starts when the action is created. Recurring = failed at the previous submitted/approved visit of the same branch.
+- A failure corrected during the visit stays a failure in the score.
 
-## Firebase step 1 (added)
-- `src/cloud.ts`: Auth (email/password), Firestore mirror (offline cache), photos uploaded to Storage instead of stored as base64 in the document.
-- `src/AuthGate.tsx`: login screen + sync before the app opens; skipped when Firebase is not configured. Offline users with a saved session continue with local data.
-- `firestore.rules` (finalized inspections cannot be edited or deleted), `storage.rules` (images < 5 MB, no overwrite/delete), `firebase.json`.
-- 120 active branches from the approved master now seed the branch list (flagged ones are archived until reviewed; old sample branches are archived, not deleted).
-- Not yet: roles, approval workflow, server-side scoring, reports/email. Rules are "any signed-in user" for now.
+## Still needs the owner
+- Blaze plan + enable Storage (photos to cloud). Server-side email sending and the AI writing assistant need Cloud Functions (Blaze) and a chosen provider.
+- Licensed fonts (TT Fors, Volt Arabic). Decision on the 30 flagged branch rows. Retention period.
+- Make the repository private again.
+
+## Deferred (future roadmap)
+Calendar scheduling, automatic assignments, QR check-in, predictive analytics, branch-manager portal.

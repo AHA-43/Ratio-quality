@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { cloudEnabled, signIn, watchUser } from './cloud';
 import { syncAll } from './data';
+import { loadProfile } from './session';
 
 /** When Firebase is configured, requires sign-in and runs a sync before the app mounts. Otherwise a no-op. */
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -16,7 +17,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (!user) { setState('out'); return; }
       setState('syncing');
       // Never block the inspector offline: give sync a few seconds, then continue with local data.
-      Promise.race([syncAll(), new Promise(r => setTimeout(r, 8000))]).catch(() => {}).finally(() => setState('in'));
+      Promise.race([loadProfile().then(() => syncAll()), new Promise(r => setTimeout(r, 8000))]).catch(() => {}).finally(() => setState('in'));
     });
   }, []);
 

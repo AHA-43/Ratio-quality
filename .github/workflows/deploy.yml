@@ -15,6 +15,8 @@ jobs:
         with: { node-version: 22, cache: pnpm }
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @workspace/ratio-quality test
+      - name: Security rules tests (Firestore emulator)
+        run: pnpm --filter @workspace/ratio-quality test:rules
       - run: pnpm --filter @workspace/ratio-quality build
       - name: Deploy hosting
         env:
@@ -88,4 +90,22 @@ jobs:
               echo "skip $EMAIL: $(echo "$RES" | jq -r '.error.message // "unknown"')"
             fi
           done
+          rm -f "$RUNNER_TEMP/sa.json"
+      - name: Ensure project owner (earliest account) is admin
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          OWNER=$(curl -sf -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts:query" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"returnUserInfo":true,"limit":"500"}' \
+            | jq -r '.userInfo | sort_by(.createdAt | tonumber) | .[0].localId')
+          DOC="https://firestore.googleapis.com/v1/projects/ratio-quality/databases/(default)/documents/users/$OWNER"
+          curl -sf -X PATCH "$DOC?updateMask.fieldPaths=role&updateMask.fieldPaths=canApprove&updateMask.fieldPaths=active" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d '{"fields":{"role":{"stringValue":"admin"},"canApprove":{"booleanValue":true},"active":{"booleanValue":true}}}' >/dev/null
+          echo "owner account set as admin"
           rm -f "$RUNNER_TEMP/sa.json"

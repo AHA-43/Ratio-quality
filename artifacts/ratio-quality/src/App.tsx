@@ -12,6 +12,11 @@ import { Form } from '@/components/ui/form';
 import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
+import { TASTING_SCORE_IDS } from './checklist';
+import { allocateInspectionNumber, audit, useProfile, workflowLabel } from './session';
+import { ExportBar } from './features/ExportBar';
+import { ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
+import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
 import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
@@ -23,9 +28,18 @@ const nav = [
   { href: '/reports', label: 'التقارير', icon: FileText },
   { href: '/settings', label: 'الإعدادات', icon: Settings },
 ];
+const moreNav = [
+  { href: '/analytics', label: 'التحليلات' },
+  { href: '/equipment', label: 'المعدات والصيانة' },
+  { href: '/baristas', label: 'الباريستا' },
+  { href: '/users', label: 'المستخدمون والصلاحيات' },
+];
 const types = ['زيارة جودة شاملة', 'فحص جودة القهوة', 'فحص المعدات', 'زيارة متابعة'];
 const defaultAnswer = (a?: Answer): Answer => a || emptyAnswer();
 const stamp = () => new Date().toISOString();
+/** Corrective-action deadlines from the approved checklist: Critical 24h, Major 72h, Minor 7 days. */
+const DUE_HOURS = { Critical: 24, Major: 72, Minor: 168 } as const;
+const defaultDueDate = (sev: keyof typeof DUE_HOURS) => new Date(Date.now() + DUE_HOURS[sev] * 3600e3).toISOString().slice(0, 10);
 const inspectionStartSchema = z.object({
   branchId: z.string().min(1, 'اختر الفرع.'),
   inspector: z.string().trim().min(1, 'اكتب اسم المفتش.'),
@@ -63,7 +77,7 @@ function AppShell({ children }: { children: ReactNode }) {
       <Link href="/" className="brand-lockup" aria-label="ريشيو للجودة"><img src="/brand/logo-ar-white.png" alt="ريشيو"/><span className="brand-sub">إدارة الجودة</span></Link>
       <div className="rail-label">مساحة العمل</div>
       {nav.map(item => <Link key={item.href} href={item.href} data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`} className={`rail-link ${location === item.href ? 'active' : ''}`}><item.icon size={18}/><span>{item.label}</span></Link>)}
-      <div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>{cloudEnabled ? 'تُحفظ بياناتك على الجهاز وتُزامن مع حسابك عند توفر الإنترنت' : 'بياناتك محفوظة على هذا الجهاز فقط'}</span></div><span className="rail-version">ريشيو للجودة · 1.0</span></div>
+      <div className="rail-label">المزيد</div>{moreNav.map(item => <Link key={item.href} href={item.href} className={`rail-link ${location === item.href ? 'active' : ''}`}><span>{item.label}</span></Link>)}<div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>{cloudEnabled ? 'تُحفظ بياناتك على الجهاز وتُزامن مع حسابك عند توفر الإنترنت' : 'بياناتك محفوظة على هذا الجهاز فقط'}</span></div><span className="rail-version">ريشيو للجودة · 1.0</span></div>
     </aside>
     <div className="main-column">
       <header className="topbar">
@@ -71,7 +85,7 @@ function AppShell({ children }: { children: ReactNode }) {
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
         <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? 'متصل · تتم المزامنة' : 'دون اتصال · الحفظ على الجهاز'}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
-      {mobileMenu && <div className="mobile-menu">{nav.map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
+      {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <main className="page-wrap">{children}</main>
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><n.icon size={20}/><span>{n.label}</span></Link>)}</nav>
     </div>
@@ -147,7 +161,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
 function InspectionRow({ inspection }: { inspection: Inspection }) {
   const score = calculateScore(inspection.questionSnapshot, inspection.answers);
   const href = inspection.status === 'finalized' ? `/reports/${inspection.id}` : `/inspection/${inspection.id}`;
-  return <Link href={href} className="visit-row" data-testid={`visit-row-${inspection.id}`}><span className="branch-symbol"><Store size={18}/></span><span className="visit-info"><b>{inspection.branchName || 'فرع غير محدد'}</b><small>{inspection.type} · {inspection.date}</small></span><span className="visit-score">{score.score === null ? <StatusPill tone={inspection.status === 'draft' ? 'amber' : 'neutral'}>{inspection.status === 'draft' ? 'مسودة' : 'غير مكتمل'}</StatusPill> : <><b>{score.score}%</b><small>{score.classification}</small></>}</span><ChevronLeft className="visit-chevron" size={16}/></Link>;
+  return <Link href={href} className="visit-row" data-testid={`visit-row-${inspection.id}`}><span className="branch-symbol"><Store size={18}/></span><span className="visit-info"><b>{inspection.branchName || 'فرع غير محدد'}</b><small>{inspection.type} · {inspection.date}</small></span><span className={`wf-pill ${inspection.workflow ?? ''}`}>{inspection.number ? `${inspection.number} · ` : ''}{workflowLabel(inspection)}</span><span className="visit-score">{score.score === null ? <StatusPill tone={inspection.status === 'draft' ? 'amber' : 'neutral'}>{inspection.status === 'draft' ? 'مسودة' : 'غير مكتمل'}</StatusPill> : <><b>{score.score}%</b><small>{score.classification}</small></>}</span><ChevronLeft className="visit-chevron" size={16}/></Link>;
 }
 
 function VisitsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
@@ -177,16 +191,6 @@ function VisitsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
     </Card></div>;
 }
 
-function ActionsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
-  const [filter, setFilter] = useState('الكل');
-  const statuses: ActionItem['status'][] = ['مفتوح', 'قيد المعالجة', 'بانتظار التحقق', 'مغلق'];
-  const rows = data.actions.filter(a => filter === 'الكل' || a.status === filter);
-  const advance = async (a: ActionItem) => { if (a.status === 'مغلق') return; const next = statuses[statuses.indexOf(a.status) + 1]; await put('actions', { ...a, status: next }); data.refresh(); };
-  return <div className="page-content"><PageTitle eyebrow="تحسين مستمر" title="الإجراءات التصحيحية" detail="تابع الملاحظات من الإسناد إلى التحقق والإغلاق."/><div className="filter-scroll">{['الكل', ...statuses].map(s => <button key={s} onClick={() => setFilter(s)} className={`filter-chip ${filter === s ? 'active' : ''}`} data-testid={`action-filter-${s}`}>{s}{s === 'الكل' && <span>{data.actions.length}</span>}</button>)}</div>
-    {rows.length ? <div className="action-cards">{rows.map(a => <Card key={a.id} className="action-card"><div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{a.severity === 'Critical' ? 'حرج' : a.severity === 'Major' ? 'رئيسي' : 'بسيط'}</span><span className="action-date">استحقاق {a.dueDate || 'غير محدد'}</span></div><h3>{a.title}</h3><p className="action-description">{a.description}</p><p>{a.recommendation || 'لا توجد توصية مسجلة.'}</p>{Boolean(a.evidence?.length) && <div className="action-evidence">{a.evidence?.map(image => <img key={image.id} src={image.data} alt={image.caption || 'دليل الإجراء'}/>)}</div>}<div className="action-meta"><span><Store size={14}/>{a.branchName}</span><span><UserIcon/> {a.responsible || 'دون مسؤول'}</span><span>السؤال #{a.questionId}</span></div><div className="action-footer"><StatusPill tone={a.status === 'مغلق' ? 'green' : a.status === 'بانتظار التحقق' ? 'amber' : 'red'}>{a.status}</StatusPill><button className="button button-outline button-small" onClick={() => advance(a)} data-testid={`advance-action-${a.id}`}>{a.status === 'مغلق' ? 'إعادة فتح' : 'تحديث الحالة'} <ChevronLeft size={15}/></button></div></Card>)}</div> : <Card><EmptyState icon={ListChecks} title="قائمة الإجراءات فارغة" text="عند تسجيل ملاحظة غير مطابقة، أنشئ إجراءً تصحيحياً مرتبطاً بها." /></Card>}</div>;
-}
-function UserIcon() { return <span className="mini-user">م</span>; }
-
 function ReportsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const reports = data.inspections.filter(i => i.status === 'finalized');
   return <div className="page-content"><PageTitle eyebrow="نتائج قابلة للطباعة" title="التقارير" detail="كل تقرير يعرض لقطة محفوظة من الأسئلة والمعايير وقت الإنهاء."/>
@@ -200,13 +204,15 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
   const score = calculateScore(inspection.questionSnapshot, inspection.answers);
   const findings = inspection.questionSnapshot.filter(q => inspection.answers[q.id]?.value === 'fail' || inspection.answers[q.id]?.initialValue === 'fail');
   const sections = [...new Set(inspection.questionSnapshot.map(q => q.section))];
-  return <div className="page-content report-page"><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><Button onClick={() => window.print()}><Printer size={17}/> طباعة التقرير</Button></div><article className="print-report">
-    <header className="print-cover"><div className="report-brand"><span className="brand-mark"><Coffee size={19}/></span><span><b>Ratio Quality</b><small>ريشيو للجودة</small></span></div><span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.id.slice(-8).toUpperCase()}</b></span></div></header>
+  return <div className="page-content report-page"><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><ExportBar inspection={inspection} actions={data.actions.filter(x => x.inspectionId === inspection.id)}/><Link href={`/inspection/${inspection.id}/baristas`} className="button button-outline">تقييم الباريستا</Link></div><article className="print-report">
+    <div className="no-print"><ApprovalPanel inspection={inspection} save={async next => { await put('inspections', next); await data.refresh(); }}/></div><header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-navy.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
     <div className="report-score"><div><small>النتيجة الإجمالية</small><strong>{score.score}%</strong><span>{score.classification} · {score.criticalFailures ? 'تجاوز حرج يغيّر التصنيف' : 'النتيجة حسب الأوزان'}</span></div><div className="report-score-note"><b>ملخص النتائج</b><p>{inspection.questionSnapshot.length - findings.length} مطابق · {findings.length} ملاحظة · {inspection.questionSnapshot.length} سؤالاً</p><p>حرج {findings.filter(q => inspection.answers[q.id]?.severity === 'Critical').length} · رئيسي {findings.filter(q => inspection.answers[q.id]?.severity === 'Major').length} · بسيط {findings.filter(q => inspection.answers[q.id]?.severity === 'Minor').length} · متكرر {findings.filter(q => inspection.answers[q.id]?.recurring).length}</p><p>الأوزان: حرج {WEIGHTS.Critical} · رئيسي {WEIGHTS.Major} · بسيط {WEIGHTS.Minor}</p></div></div>
     <h2 className="report-section-title">النتائج حسب القسم</h2>
     {sections.map(section => <section className="report-section" key={section}><h3>{section}</h3>{inspection.questionSnapshot.filter(q => q.section === section).map(q => { const a = inspection.answers[q.id]; const wasFailed = a.value === 'fail' || a.initialValue === 'fail'; return <div className="report-finding" key={q.id}><span className={`finding-mark ${wasFailed ? 'failed' : a.value === 'na' ? 'na' : 'passed'}`}>{wasFailed ? '!' : a.value === 'na' ? '—' : '✓'}</span><div><b>{q.id}. {q.title}</b><small>{q.criterion}</small>{wasFailed && <p>{a.observation || 'لم تسجل ملاحظة تفصيلية.'}{a.value !== 'fail' ? (a.correctedDuringVisit ? ` — تم التصحيح خلال الزيارة: ${a.correctionNote || 'تم تسجيل التصحيح.'}` : ' — تم تعديل الحالة، دون تأكيد تسجيل التصحيح. الإخفاق الأولي محفوظ.') : ''}{a.recommendation && ` — التوصية: ${a.recommendation}`}</p>}{a.attachments.map(img => <figure className="report-evidence" key={img.id}><img src={img.data} alt={img.caption || 'دليل مرفق'}/>{img.caption && <figcaption>{img.caption}</figcaption>}</figure>)}</div><StatusPill tone={a.value === 'fail' ? 'red' : a.value === 'na' ? 'neutral' : 'green'}>{a.value === 'fail' ? 'غير مطابق' : a.value === 'na' ? 'لا ينطبق' : 'مطابق حالياً'}</StatusPill></div>; })}</section>)}
     <h2 className="report-section-title">خطة الإجراءات</h2>{data.actions.filter(a => a.inspectionId === inspection.id).length ? data.actions.filter(a => a.inspectionId === inspection.id).map(a => <div className="report-action" key={a.id}><div><b>{a.title}</b><small>{a.description}</small></div><span>{a.responsible || 'دون مسؤول'} · {a.dueDate || 'دون موعد'} · {a.status}</span></div>) : <p className="muted-text">لا توجد إجراءات مرتبطة بهذه الزيارة.</p>}
-    <div className="report-closing"><b>ملاحظة المنهجية</b><p>المعايير والعتبات الظاهرة في هذا التقرير أولية وقابلة للتعديل، وليست معايير رسمية معتمدة من Ratio. تم حفظ التقرير محلياً على الجهاز.</p></div>
+    <div className="report-closing"><b>ملاحظة المنهجية</b><p>قائمة الفحص وفق نموذج «قائمة فحص زيارة قسم الجودة» المعتمد (46 بنداً). تُقارن القراءات بوصفات ومعايير التشغيل المعتمدة لدى المنشأة.</p></div>
+    {inspection.signatures && <div className="report-signatures"><div><small>توقيع المفتش</small>{inspection.signatures.inspector?.image && <img src={inspection.signatures.inspector.image} alt="توقيع المفتش"/>}<b>{inspection.signatures.inspector?.name}</b><span>{inspection.signatures.inspector?.at?.slice(0, 16).replace('T', ' ')}</span></div><div><small>توقيع مسؤول الفرع</small>{inspection.signatures.branch?.image ? <img src={inspection.signatures.branch.image} alt="توقيع مسؤول الفرع"/> : <em>{inspection.signatures.branch?.declinedReason ? `تعذّر التوقيع: ${inspection.signatures.branch.declinedReason}` : ''}</em>}<b>{inspection.signatures.branch?.name}</b><span>{inspection.signatures.branch?.at?.slice(0, 16).replace('T', ' ')}</span></div></div>}
+    {inspection.snapshotHash && <p className="report-hash">بصمة النسخة المعتمدة (SHA-256): {inspection.snapshotHash}</p>}
     </article></div>;
 }
 
@@ -227,6 +233,7 @@ function BranchPicker({ branches, value, onChange }: { branches: Branch[]; value
 
 function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, setLocation] = useLocation();
+  const profile = useProfile();
   const [questions, setQuestions] = useState<Question[]>(QUESTIONS);
   const form = useForm<InspectionStartValues>({
     resolver: zodResolver(inspectionStartSchema),
@@ -236,6 +243,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const type = form.watch('type');
   const [error, setError] = useState('');
   useEffect(() => { form.register('branchId'); }, [form]);
+  useEffect(() => { if (profile?.name && !form.getValues('inspector')) form.setValue('inspector', profile.name); }, [profile?.name]);
   useEffect(() => { loadQuestions().then(setQuestions).catch(() => setQuestions(QUESTIONS)); }, []);
   const activeBranches = data.branches.filter(b => !b.archived);
   const start = async (values: InspectionStartValues) => {
@@ -259,12 +267,12 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
       }
     }
     const id = newId();
-    const insp: Inspection = { id, status: 'draft', branchId: values.branchId, branchName: branch.name, inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
+    const insp: Inspection = { id, status: 'draft', branchId: values.branchId, branchName: branch.name, branchCode: branch.code, inspectorUid: profile?.uid, inspectorEmail: profile?.email, startedAt: stamp(), checklistVersion: 'official-pdf-v1', inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
     await put('inspections', insp); await data.refresh(); setLocation(`/inspection/${id}`);
   };
   return <div className="page-content narrow-page"><Link href="/" className="back-link"><ArrowRight size={16}/> الرئيسية</Link><PageTitle eyebrow="زيارة جديدة" title="بيانات الجولة" detail="سجّل تفاصيل الزيارة قبل بدء الفحص. ستُحفظ المسودة تلقائياً على هذا الجهاز."/>
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(start)}><div className="form-grid">
-      <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}</div>
+      <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
       <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" {...form.register('date')} data-testid="input-inspection-date"/></label>
@@ -287,6 +295,8 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [responsible, setResponsible] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saved, setSaved] = useState(true);
+  const [signatures, setSignatures] = useState<NonNullable<Inspection['signatures']>>(inspection?.signatures || {});
+  const prev = useMemo(() => inspection ? previousInspection(data.inspections, inspection.branchId, inspection.id) : undefined, [data.inspections, inspection?.id]);
   const questions = inspection?.questionSnapshot || QUESTIONS;
   const q = questions[index];
   const answer = defaultAnswer(q ? answers[q.id] : undefined);
@@ -297,11 +307,11 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     if (!inspection || inspection.status !== 'draft') return;
     setSaved(false);
     const timer = window.setTimeout(async () => {
-      await put('inspections', { ...inspection, answers, updatedAt: stamp() });
+      await put('inspections', { ...inspection, answers, signatures, updatedAt: stamp() });
       setSaved(true); data.refresh();
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [answers, inspection?.id]);
+  }, [answers, signatures, inspection?.id]);
   if (!inspection) return <div className="page-content"><EmptyState title="المسودة غير موجودة" text="قد تكون حذفت أو استوردت على جهاز آخر." action={<Link href="/visits" className="button button-soft">العودة للزيارات</Link>}/></div>;
   const update = (patch: Partial<Answer>, questionId = q.id) => setAnswers(old => {
     const previous = defaultAnswer(old[questionId]);
@@ -310,16 +320,21 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     return { ...old, [questionId]: next };
   });
   const failMissing = questions.filter(item => answers[item.id]?.value === 'fail' && !answers[item.id]?.observation.trim());
-  const canFinalize = score.score !== null && failMissing.length === 0;
+  const canFinalize = score.score !== null && failMissing.length === 0 && signaturesComplete(signatures);
   const finalize = async () => {
     if (score.unanswered.length) { setMessage(`أكمل الأسئلة المطلوبة أولاً. المتبقي ${score.unanswered.length}.`); setReview(false); setIndex(questions.findIndex(x => score.unanswered.includes(x.id))); return; }
     if (failMissing.length) { setMessage(`أضف وصف الملاحظة للسؤال رقم ${failMissing[0].id}.`); setReview(false); setIndex(questions.findIndex(x => x.id === failMissing[0].id)); return; }
-    await put('inspections', { ...inspection, status: 'finalized', answers, finalizedAt: stamp(), updatedAt: stamp(), questionSnapshot: questions.map(x => ({ ...x })) });
-    setMessage('تم إنهاء الزيارة وحفظ لقطة التقرير.'); await data.refresh(); setReview(true);
+    if (!signaturesComplete(signatures)) { setMessage('أكمل توقيع المفتش، واسم وتوقيع مسؤول الفرع (أو سبب تعذّر التوقيع) قبل الإرسال.'); return; }
+    const number = inspection.number && !inspection.number.startsWith('LOCAL') ? inspection.number : (await allocateInspectionNumber()) ?? undefined;
+    const prevScore = prev ? calculateScore(prev.questionSnapshot, prev.answers) : null;
+    await put('inspections', { ...inspection, status: 'finalized', workflow: 'submitted', number, signatures, answers, submittedAt: stamp(), finalizedAt: stamp(), updatedAt: stamp(), questionSnapshot: questions.map(x => ({ ...x })),
+      previous: prev ? { inspectionId: prev.id, date: prev.date, score: prevScore?.score ?? null, classification: prevScore?.classification ?? null } : undefined });
+    await audit('inspection.submit', 'inspections', inspection.id, { number, score: score.score, classification: score.classification });
+    setMessage('تم إرسال الزيارة للاعتماد وحفظ لقطة التقرير.'); await data.refresh(); setReview(true);
   };
   const addAction = async (question: Question) => {
     const a = answers[question.id];
-    const item: ActionItem = { id: newId(), title: `${question.title} — ${inspection.branchName}`, description: a.observation, branchName: inspection.branchName, questionId: question.id, inspectionId: inspection.id, responsible, dueDate, status: 'مفتوح', severity: a.severity, recommendation: a.recommendation, evidence:a.attachments.map(item => ({...item})) };
+    const item: ActionItem = { id: newId(), title: `${question.title} — ${inspection.branchName}`, description: a.observation, branchName: inspection.branchName, branchId: inspection.branchId, questionId: question.id, inspectionId: inspection.id, responsible, dueDate: dueDate || defaultDueDate(question.severity), status: responsible ? 'مُسند' : 'مفتوح', severity: question.severity, recommendation: a.recommendation, recurring: a.recurring, createdAt: stamp(), history: [{ status: responsible ? 'مُسند' : 'مفتوح', at: stamp(), by: inspection.inspector }], evidence:a.attachments.map(item => ({...item})) };
     await put('actions', item); await data.refresh(); setActionForm(null); setMessage('تم إنشاء الإجراء التصحيحي وربطه بالزيارة.');
   };
   const selectPhoto = async (files: FileList | null) => {
@@ -346,11 +361,12 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const answeredCount = questions.filter(x => answers[x.id]?.value !== null && answers[x.id]?.value !== undefined).length;
   const isFinal = inspection.status === 'finalized';
   return <div className="page-content runner-page">
-    <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? 'محفوظ تلقائياً' : 'جارٍ الحفظ…'}</div></div>
+    {inspection.workflow === 'returned' && <div className="alert alert-danger">أُعيدت هذه الزيارة للتصحيح{inspection.returnedBy ? ` من ${inspection.returnedBy.name}` : ''}: {inspection.returnReason}</div>}
+    <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? 'محفوظ تلقائياً' : 'جارٍ الحفظ…'}</div></div>
     <div className="runner-intro"><div><div className="eyebrow">{inspection.branchName} · {inspection.shift}</div><h1>{inspection.type}</h1><p>{inspection.inspector} <span>·</span> {inspection.date}</p></div><span className="question-counter">{answeredCount}<small> / {questions.length} مكتمل</small></span></div>
     <div className="progress-track"><span style={{ width: `${(answeredCount / questions.length) * 100}%` }}/></div>
     {message && <div className="alert alert-info"><Info size={16}/>{message}<button onClick={() => setMessage('')} aria-label="إغلاق"><X size={16}/></button></div>}
-    {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><div className={`score-ring ${score.classification === 'غير مقبول' ? 'score-bad' : ''}`}><b>{score.score === null ? '—' : `${score.score}%`}</b><small>{score.classification || 'غير مكتمل'}</small></div><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div>{!isFinal && <Button className="full-button" disabled={!canFinalize} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> إنهاء الزيارة</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة وإضافة ملاحظة لكل إخفاق قبل الإنهاء.</p>}</Card>
+    {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><div className={`score-ring ${score.classification === 'غير مقبول' ? 'score-bad' : ''}`}><b>{score.score === null ? '—' : `${score.score}%`}</b><small>{score.classification || 'غير مكتمل'}</small></div><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div><SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>{!isFinal && <Button className="full-button" disabled={!canFinalize} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> إرسال للاعتماد</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>
        <div className="review-sections">{sectionGroups.map(section => <Card key={section} className="review-section-card"><div className="card-heading"><h3>{section}</h3><span>{questions.filter(x => x.section === section).filter(x => answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail').length} ملاحظة</span></div>{questions.filter(x => x.section === section).map(item => { const a = defaultAnswer(answers[item.id]); const failedInitially = a.value === 'fail' || a.initialValue === 'fail'; return <button className="review-question" key={item.id} disabled={isFinal} onClick={() => { setIndex(questions.findIndex(x => x.id === item.id)); setReview(false); }}><span className={`finding-mark ${failedInitially ? 'failed' : a.value === 'na' ? 'na' : a.value === 'pass' ? 'passed' : 'empty'}`}>{failedInitially ? '!' : a.value === 'pass' ? '✓' : a.value === 'na' ? '—' : '·'}</span><span>{item.id}. {item.title}</span><ChevronLeft size={15}/></button>; })}</Card>)}</div></div> :
     <div className="inspection-layout"><aside className="section-sidebar"><span className="eyebrow">أقسام الفحص</span>{sectionGroups.map((section, sIndex) => <button key={section} className={`section-jump ${q?.section === section ? 'current' : ''}`} onClick={() => setIndex(questions.findIndex(item => item.section === section))} data-testid={`jump-section-${sIndex}`}><span className="section-number">{String(sIndex + 1).padStart(2, '0')}</span><span>{section}</span><small>{questions.filter(x => x.section === section && answers[x.id]?.value != null).length}/{questions.filter(x => x.section === section).length}</small></button>)}<button className="review-link" onClick={() => setReview(true)}><FileCheck2 size={16}/> مراجعة الزيارة</button></aside>
     <div className="question-column"><div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length}</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><p className="criteria">{q.criterion} <span>معيار أولي قابل للتعديل</span></p>
@@ -366,7 +382,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <div className="answer-label">نتيجة الفحص <em>*</em></div><div className="answer-options">
         {[['pass','مطابق','مطابق للمعيار',Check],['fail','غير مطابق','يتطلب متابعة',X],['na','لا ينطبق','يُستبعد من النتيجة',CircleHelp]].map(([value,label,sub,Icon]) => <button type="button" key={value as string} onClick={() => { update({ value: value as string, severity: q.severity }); setMessage(''); }} className={`answer-option ${answer.value === value ? `chosen ${value}` : ''}`} data-testid={`answer-${value}-${q.id}`}><span className="choice-icon"><Icon size={18}/></span><b>{label as string}</b><small>{sub as string}</small></button>)}
       </div>
-      {answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="صف ما تمت ملاحظته بوضوح…" data-testid={`input-observation-${q.id}`}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={answer.severity} onChange={e => update({ severity: e.target.value as Answer['severity'] })} data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة</span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
+      <RecurringHint prev={prev} questionId={q.id} answer={answer} onConfirm={v => update({ recurring: v })}/>{TASTING_SCORE_IDS.includes(q.id) && <TastingScores value={answer.tasting} onChange={t => update({ tasting: t })}/>}{answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="صف ما تمت ملاحظته بوضوح…" data-testid={`input-observation-${q.id}`}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={q.severity} disabled title="الخطورة محددة في قائمة الفحص المعتمدة" data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة</span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
       {answer.value === 'na' && <label className="field na-reason"><span>سبب عدم الانطباق <small>اختياري</small></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="اكتب سبب استبعاد هذا السؤال من الزيارة…"/></label>}
       {answer.initialValue === 'fail' && answer.value === 'pass' && <div className="correction-record"><label className="recurring-toggle"><input type="checkbox" checked={Boolean(answer.correctedDuringVisit)} onChange={e => update({ correctedDuringVisit: e.target.checked })} data-testid={`toggle-corrected-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>تم تصحيح الملاحظة خلال الزيارة</span></label>{answer.correctedDuringVisit && <label className="field"><span>تفاصيل التصحيح <small>اختياري</small></span><textarea value={answer.correctionNote || ''} onChange={e => update({ correctionNote: e.target.value })} placeholder="ما الذي تم تصحيحه؟"/></label>}</div>}
       <div className="evidence-block">
@@ -461,7 +477,12 @@ function Router() {
   return <RoutedErrorBoundary><AppShell><Switch>
     <Route path="/"><HomePage data={data}/></Route>
     <Route path="/visits"><VisitsPage data={data}/></Route>
-    <Route path="/actions"><ActionsPage data={data}/></Route>
+    <Route path="/actions"><ActionsBoard data={data}/></Route>
+    <Route path="/analytics"><AnalyticsPage data={data}/></Route>
+    <Route path="/equipment"><EquipmentPage data={data}/></Route>
+    <Route path="/baristas"><BaristasPage data={data}/></Route>
+    <Route path="/users"><UsersPage/></Route>
+    <Route path="/inspection/:id/baristas"><BaristaEvaluation data={data}/></Route>
     <Route path="/reports"><ReportsPage data={data}/></Route>
     <Route path="/reports/:id"><ReportDetail data={data}/></Route>
     <Route path="/settings"><SettingsPage data={data}/></Route>

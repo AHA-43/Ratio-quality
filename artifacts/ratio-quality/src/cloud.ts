@@ -5,7 +5,7 @@ import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, conne
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
-const env = import.meta.env;
+const env: Record<string, string | undefined> = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
 export const cloudEnabled = Boolean(env.VITE_FIREBASE_PROJECT_ID && env.VITE_FIREBASE_API_KEY);
 
 const app = cloudEnabled ? initializeApp({
@@ -13,7 +13,7 @@ const app = cloudEnabled ? initializeApp({
   storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET, appId: env.VITE_FIREBASE_APP_ID,
 }) : undefined;
 export const auth = app ? getAuth(app) : undefined;
-const fs = app ? initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }) : undefined;
+export const fs = app ? initializeFirestore(app, { ignoreUndefinedProperties: true, localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }) : undefined;
 const storage = app ? getStorage(app) : undefined;
 if (app && env.VITE_USE_EMULATORS === 'true') {
   connectAuthEmulator(auth!, 'http://127.0.0.1:9099', { disableWarnings: true });
