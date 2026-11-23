@@ -103,3 +103,32 @@ export async function snapshotHash(i: Inspection): Promise<string> {
 }
 
 export { workflowLabel } from './labels';
+
+/* ---------- shared app configuration (config/app), editable by quality leads ---------- */
+export type RecipientList = { id: string; name: string; to: string[]; cc: string[]; branchId?: string };
+export type AppConfig = { photoRequiredOnFail: number[]; recipientLists: RecipientList[] };
+const EMPTY_CONFIG: AppConfig = { photoRequiredOnFail: [], recipientLists: [] };
+let config: AppConfig = (() => { try { return { ...EMPTY_CONFIG, ...JSON.parse(localStorage.getItem('rq-config') || '{}') }; } catch { return EMPTY_CONFIG; } })();
+const cfgListeners = new Set<(c: AppConfig) => void>();
+export async function loadConfig() {
+  if (!fs || !auth?.currentUser) return config;
+  try {
+    const snap = await getDoc(doc(fs, 'config', 'app'));
+    if (snap.exists()) config = { ...EMPTY_CONFIG, ...(snap.data() as Partial<AppConfig>) };
+    try { localStorage.setItem('rq-config', JSON.stringify(config)); } catch { /* ignore */ }
+  } catch { /* offline: keep cached */ }
+  cfgListeners.forEach(l => l(config));
+  return config;
+}
+export async function saveConfig(patch: Partial<AppConfig>) {
+  config = { ...config, ...patch };
+  try { localStorage.setItem('rq-config', JSON.stringify(config)); } catch { /* ignore */ }
+  cfgListeners.forEach(l => l(config));
+  if (fs && auth?.currentUser) { await setDoc(doc(fs, 'config', 'app'), JSON.parse(JSON.stringify(config))); await audit('config.update', 'config', 'app', patch as Record<string, unknown>); }
+}
+export function useConfig() {
+  const [c, setC] = useState<AppConfig>(config);
+  useEffect(() => { cfgListeners.add(setC); loadConfig(); return () => { cfgListeners.delete(setC); }; }, []);
+  return c;
+}
+export const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());

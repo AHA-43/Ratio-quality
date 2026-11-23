@@ -3,7 +3,7 @@ import { Link, useRoute } from 'wouter';
 import type { ActionItem, Barista, BaristaEval, Branch, Equipment, Inspection, Question } from '../data';
 import { list, newId, put, QUESTIONS } from '../data';
 import { calculateScore } from '../scoring';
-import { audit, canApprove, isQualityLead, listAudit, listUsers, ROLE_LABEL, updateUser, useProfile, type Profile, type Role } from '../session';
+import { audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
 import { cloudEnabled } from '../cloud';
 
 export type AppData = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[]; refresh: () => Promise<void> };
@@ -237,5 +237,43 @@ export function UsersPage() {
       <small>{canApprove(u) ? 'يستطيع الاعتماد' : 'لا يستطيع الاعتماد'}</small>
     </section>)}</div>
     {log.length > 0 && <section className="surface-card"><h3>سجل التدقيق (آخر 60 حدثاً)</h3><div className="history">{log.map((l, k) => <div key={k}>{l.at.slice(0, 16).replace('T', ' ')} · {l.actor} · {l.action} · {l.entityId}</div>)}</div></section>}
+  </div>;
+}
+
+/* ===================== Shared configuration (leads) ===================== */
+export function ConfigPage({ data }: { data: AppData }) {
+  const profile = useProfile();
+  const cfg = useConfig();
+  const lead = isQualityLead(profile) || !cloudEnabled;
+  const [draft, setDraft] = useState<RecipientList>({ id: '', name: '', to: [], cc: [] });
+  const [toText, setTo] = useState(''); const [ccText, setCc] = useState(''); const [err, setErr] = useState(''); const [ok, setOk] = useState('');
+  const parse = (t: string) => t.split(/[\s,،;]+/).map(x => x.trim()).filter(Boolean);
+  const togglePhoto = (id: number) => saveConfig({ photoRequiredOnFail: cfg.photoRequiredOnFail.includes(id) ? cfg.photoRequiredOnFail.filter(x => x !== id) : [...cfg.photoRequiredOnFail, id].sort((a, b) => a - b) });
+  const saveList = async () => {
+    const to = parse(toText), cc = parse(ccText);
+    const bad = [...to, ...cc].filter(e => !isValidEmail(e));
+    if (!draft.name.trim() || !to.length) { setErr('أدخل اسم القائمة وعنواناً واحداً على الأقل في «إلى».'); return; }
+    if (bad.length) { setErr(`عناوين غير صحيحة: ${bad.join('، ')}`); return; }
+    const item: RecipientList = { ...draft, id: draft.id || newId(), name: draft.name.trim(), to, cc };
+    await saveConfig({ recipientLists: [...cfg.recipientLists.filter(l => l.id !== item.id), item] });
+    setDraft({ id: '', name: '', to: [], cc: [] }); setTo(''); setCc(''); setErr(''); setOk('تم حفظ القائمة.');
+  };
+  return <div className="page-content">
+    <Title eyebrow="إعدادات مشتركة" title="الأدلة الإلزامية وقوائم البريد" detail={lead ? 'تُطبَّق على جميع المستخدمين.' : 'للاطلاع فقط — التعديل لمدير الجودة.'}/>
+    <section className="surface-card cfg-block"><h3>بنود تتطلب صورة عند «غير مطابق»</h3><p className="muted-text">لن يُسمح بالانتقال أو الإرسال حتى تُرفق صورة لهذه البنود عند عدم المطابقة.</p>
+      <div className="cfg-qs">{QUESTIONS.map(q => <label key={q.id} className={`cfg-q ${q.severity === 'Critical' ? 'crit' : ''}`}><input type="checkbox" disabled={!lead} checked={cfg.photoRequiredOnFail.includes(q.id)} onChange={() => togglePhoto(q.id)}/><span>#{q.id} {q.title}</span></label>)}</div>
+    </section>
+    <section className="surface-card cfg-block"><h3>قوائم مستلمي التقارير</h3><p className="muted-text">أدخل عناوين البريد المعتمدة لديكم فقط. تظهر هذه القوائم في صفحة التقرير لتجهيز الرسالة.</p>
+      {cfg.recipientLists.map(l => <div key={l.id} className="cfg-list"><div><b>{l.name}</b>{l.branchId && <small> · {data.branches.find(b => b.id === l.branchId)?.name}</small>}<small dir="ltr">To: {l.to.join(', ')}{l.cc.length ? ` · CC: ${l.cc.join(', ')}` : ''}</small></div>{lead && <div className="approval-actions"><button className="button button-outline" onClick={() => { setDraft(l); setTo(l.to.join(', ')); setCc(l.cc.join(', ')); }}>تعديل</button><button className="button button-outline" onClick={() => window.confirm(`حذف القائمة «${l.name}»؟`) && saveConfig({ recipientLists: cfg.recipientLists.filter(x => x.id !== l.id) })}>حذف</button></div>}</div>)}
+      {!cfg.recipientLists.length && <p className="muted-text">لا توجد قوائم بعد.</p>}
+      {lead && <div className="form-grid cfg-form">
+        <label className="field"><span>اسم القائمة (مثال: إدارة العمليات)</span><input value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })}/></label>
+        <label className="field"><span>خاصة بفرع (اختياري)</span><select value={draft.branchId ?? ''} onChange={e => setDraft({ ...draft, branchId: e.target.value || undefined })}><option value="">لكل الفروع</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+        <label className="field"><span>إلى (To)</span><input dir="ltr" inputMode="email" value={toText} onChange={e => setTo(e.target.value)} placeholder="name@company.com, ..."/></label>
+        <label className="field"><span>نسخة (CC)</span><input dir="ltr" inputMode="email" value={ccText} onChange={e => setCc(e.target.value)}/></label>
+        <button className="button button-primary" onClick={saveList}>{draft.id ? 'حفظ التعديل' : 'إضافة القائمة'}</button>
+        {err && <small className="form-error">{err}</small>}{ok && <small className="ok">{ok}</small>}
+      </div>}
+    </section>
   </div>;
 }

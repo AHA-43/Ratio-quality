@@ -188,9 +188,10 @@ export async function exportPptx(i: Inspection, actions: ActionItem[]): Promise<
   return { blob, name: `${fileBase(i)}.pptx` };
 }
 
-export function mailtoLink(i: Inspection) {
+export function mailtoLink(i: Inspection, to: string[] = [], cc: string[] = []) {
   const s = calculateScore(i.questionSnapshot, i.answers);
   const subject = `تقرير زيارة الجودة — ${i.branchName} — ${i.date.slice(0, 10)}`;
   const body = `السلام عليكم،\n\nنرفق لكم نتائج زيارة الجودة لفرع ${i.branchName}${i.branchCode ? ` (${i.branchCode})` : ''} بتاريخ ${i.date.slice(0, 10)}.\n\nرقم الزيارة: ${i.number ?? '—'}\nالنسبة الموزونة: ${s.score ?? '—'}%\nالتصنيف: ${s.classification ?? '—'}\nالحالة: ${workflowLabel(i)}\n\nنأمل الاطلاع على الملاحظات وتنفيذ الإجراءات التصحيحية في مواعيدها.\n\nمع التحية،\n${i.inspector}\nإدارة الجودة — ريشيو`;
-  return `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const ccPart = cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '';
+  return `mailto:${encodeURIComponent(to.join(',')).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(subject)}${ccPart}&body=${encodeURIComponent(body)}`;
 }

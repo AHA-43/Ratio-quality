@@ -81,3 +81,8 @@ test('inspection counter only increments by one', async () => {
   await assertSucceeds(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2026, seq: 6 }));
   await assertFails(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2026, seq: 50 }));
 });
+test('shared config: everyone reads, only quality leads write', async () => {
+  await assertFails(setDoc(doc(as('insp'), 'config/app'), { photoRequiredOnFail: [] }));
+  await assertSucceeds(setDoc(doc(as('qm'), 'config/app'), { photoRequiredOnFail: [5] }));
+  await assertSucceeds(getDoc(doc(as('insp'), 'config/app')));
+});

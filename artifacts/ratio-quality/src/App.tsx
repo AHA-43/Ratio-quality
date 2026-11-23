@@ -13,9 +13,9 @@ import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, Check
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
-import { allocateInspectionNumber, audit, canApprove, useProfile, workflowLabel } from './session';
+import { allocateInspectionNumber, audit, canApprove, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar } from './features/ExportBar';
-import { isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
+import { ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
 import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
@@ -34,6 +34,7 @@ const moreNav = [
   { href: '/equipment', label: 'المعدات والصيانة' },
   { href: '/baristas', label: 'الباريستا' },
   { href: '/users', label: 'المستخدمون والصلاحيات' },
+  { href: '/config', label: 'الأدلة وقوائم البريد' },
 ];
 const types = ['زيارة جودة شاملة', 'فحص جودة القهوة', 'فحص المعدات', 'زيارة متابعة'];
 const defaultAnswer = (a?: Answer): Answer => a || emptyAnswer();
@@ -311,6 +312,8 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [responsible, setResponsible] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saved, setSaved] = useState(true);
+  const appConfig = useConfig();
+  const needsPhoto = (qid: number) => appConfig.photoRequiredOnFail.includes(qid) && answers[qid]?.value === 'fail' && !(answers[qid]?.attachments?.length);
   const [autoAdvance, setAutoAdvance] = useState(() => { try { return localStorage.getItem('rq-auto') !== 'off'; } catch { return true; } });
   const [toast, setToast] = useState<{ text: string; back: number } | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -342,6 +345,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const goNext = () => {
     if (answer.value === null) { setMessage('اختر نتيجة السؤال قبل المتابعة.'); return false; }
     if (answer.value === 'fail' && !answer.observation.trim()) { setMessage('أضف وصف الملاحظة قبل الانتقال.'); return false; }
+    if (needsPhoto(q.id)) { setMessage('هذا البند يتطلب صورة دليل عند عدم المطابقة.'); return false; }
     if (index < questions.length - 1) { setIndex(index + 1); setMessage(''); } else setReview(true);
     return true;
   };
@@ -367,10 +371,12 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const answeredQs = questions.filter(x => answers[x.id]?.value != null);
   const liveScore = calculateScore(answeredQs, answers);
   const failMissing = questions.filter(item => answers[item.id]?.value === 'fail' && !answers[item.id]?.observation.trim());
-  const canFinalize = score.score !== null && failMissing.length === 0 && signaturesComplete(signatures);
+  const photoMissing = questions.filter(item => needsPhoto(item.id));
+  const canFinalize = score.score !== null && failMissing.length === 0 && photoMissing.length === 0 && signaturesComplete(signatures);
   const finalize = async () => {
     if (score.unanswered.length) { setMessage(`أكمل الأسئلة المطلوبة أولاً. المتبقي ${score.unanswered.length}.`); setReview(false); setIndex(questions.findIndex(x => score.unanswered.includes(x.id))); return; }
     if (failMissing.length) { setMessage(`أضف وصف الملاحظة للسؤال رقم ${failMissing[0].id}.`); setReview(false); setIndex(questions.findIndex(x => x.id === failMissing[0].id)); return; }
+    if (photoMissing.length) { setMessage(`البند ${photoMissing[0].id} يتطلب صورة دليل.`); setReview(false); setIndex(questions.findIndex(x => x.id === photoMissing[0].id)); return; }
     if (!signaturesComplete(signatures)) { setMessage('أكمل توقيع المفتش، واسم وتوقيع مسؤول الفرع (أو سبب تعذّر التوقيع) قبل الإرسال.'); return; }
     const number = inspection.number && !inspection.number.startsWith('LOCAL') ? inspection.number : (await allocateInspectionNumber()) ?? undefined;
     const prevScore = prev ? calculateScore(prev.questionSnapshot, prev.answers) : null;
@@ -439,7 +445,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       {answer.value === 'na' && <label className="field na-reason"><span>سبب عدم الانطباق <small>اختياري</small></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="اكتب سبب استبعاد هذا السؤال من الزيارة…"/></label>}
       {answer.initialValue === 'fail' && answer.value === 'pass' && <div className="correction-record"><label className="recurring-toggle"><input type="checkbox" checked={Boolean(answer.correctedDuringVisit)} onChange={e => update({ correctedDuringVisit: e.target.checked })} data-testid={`toggle-corrected-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>تم تصحيح الملاحظة خلال الزيارة</span></label>{answer.correctedDuringVisit && <label className="field"><span>تفاصيل التصحيح <small>اختياري</small></span><textarea value={answer.correctionNote || ''} onChange={e => update({ correctionNote: e.target.value })} placeholder="ما الذي تم تصحيحه؟"/></label>}</div>}
       <div className="evidence-block">
-        <div className="evidence-heading"><span><ImagePlus size={17}/> أدلة مصورة <small>اختياري</small></span><label className="upload-button"><Plus size={16}/> إضافة صورة<input type="file" accept="image/*" capture="environment" multiple onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid={`input-photo-${q.id}`}/></label></div>
+        <div className="evidence-heading"><span><ImagePlus size={17}/> أدلة مصورة {appConfig.photoRequiredOnFail.includes(q.id) ? <em className="req-photo">مطلوبة عند عدم المطابقة</em> : <small>اختياري</small>}</span><label className="upload-button"><Plus size={16}/> إضافة صورة<input type="file" accept="image/*" capture="environment" multiple onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid={`input-photo-${q.id}`}/></label></div>
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو غير مدعوم.</p>
         {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}><img src={img.data} alt={img.caption || img.name}/><button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button><input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
@@ -535,6 +541,7 @@ function Router() {
     <Route path="/equipment"><EquipmentPage data={data}/></Route>
     <Route path="/baristas"><BaristasPage data={data}/></Route>
     <Route path="/users"><UsersPage/></Route>
+    <Route path="/config"><ConfigPage data={data}/></Route>
     <Route path="/inspection/:id/baristas"><BaristaEvaluation data={data}/></Route>
     <Route path="/reports"><ReportsPage data={data}/></Route>
     <Route path="/reports/:id"><ReportDetail data={data}/></Route>

@@ -230,3 +230,39 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
 .attention a b { min-width: 30px; height: 30px; padding: 0 8px; border-radius: 15px; display: grid; place-items: center; font-size: 13px; }
 .attention a.red b { background: #fdecea; color: #b3261e; } .attention a.blue b { background: var(--corn-soft); color: var(--navy-2); } .attention a.amber b { background: #fff4e5; color: #8a5a12; }
 @media (max-width: 767px) { .section-sidebar { display: none !important; } }
+.req-photo { font-style: normal; font-size: 11px; font-weight: 700; color: #b3261e; background: #fdecea; padding: 2px 8px; border-radius: 8px; margin-inline-start: 6px; }
+.cfg-block { padding: 16px; margin-bottom: 14px; display: grid; gap: 10px; } .cfg-block h3 { margin: 0; }
+.cfg-qs { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 6px; }
+.cfg-q { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; padding: 8px; border-radius: 10px; background: var(--milk-soft); }
+.cfg-q.crit { box-shadow: inset 3px 0 0 #b3261e; }
+.cfg-list { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid #f0ece4; } .cfg-list > div:first-child { display: grid; gap: 2px; } .cfg-list small { color: #6b6b99; font-size: 12px; }
+.cfg-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; align-items: end; }
+.recip-select { width: auto; min-width: 180px; }
+
+/* ===== Tablet (iPad / Android tablets) ===== */
+@media (min-width: 768px) and (max-width: 1180px) {
+  /* compact icon rail gives the inspection the full width */
+  .side-rail { width: 84px !important; padding-inline: 10px; align-items: center; }
+  .main-column { margin-right: 84px !important; }
+  .brand-lockup img { height: 30px; width: 60px; object-fit: contain; object-position: right; }
+  .brand-sub, .rail-label, .device-note, .rail-version { display: none !important; }
+  .rail-link { justify-content: center; padding: 0; width: 60px; flex-direction: column; gap: 2px; font-size: 10px; min-height: 58px; }
+  .rail-link span { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: center; }
+  .page-wrap { padding: 24px 24px 48px; }
+  .inspection-layout { grid-template-columns: 200px minmax(0, 1fr); }
+  .answer-option { min-height: 96px; }
+  .question-controls { position: sticky; bottom: 0; z-index: 15; padding: 12px 0; background: linear-gradient(to top, var(--milk-soft) 70%, transparent); }
+}
+/* tablet portrait: sections become a top bar, question uses the full width */
+@media (min-width: 768px) and (max-width: 1024px) and (orientation: portrait) {
+  .inspection-layout { grid-template-columns: 1fr; }
+  .section-sidebar { position: static !important; display: flex !important; gap: 8px; overflow-x: auto; }
+  .section-jump { min-width: 170px; }
+}
+/* landscape tablet & desktop: split view — question on one side, findings/evidence alongside */
+@media (min-width: 1024px) and (orientation: landscape) {
+  .question-card { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr); column-gap: 24px; align-items: start; }
+  .question-card > * { grid-column: 1; }
+  .question-card > .finding-fields, .question-card > .evidence-block, .question-card > .na-reason, .question-card > .correction-record, .question-card > .tasting-box, .question-card > .recurring-hint { grid-column: 2; }
+  .question-card > .finding-fields { grid-row: 1 / span 6; margin-top: 0; }
+}
