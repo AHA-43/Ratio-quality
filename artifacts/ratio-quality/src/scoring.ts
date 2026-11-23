@@ -25,7 +25,8 @@ export function calculateScore(questions: Question[], answers: Record<number, An
     if (effectiveValue === 'fail' && severity === 'Critical') criticalFailures++;
   }
   if (unanswered.length || applicableWeight === 0) return { score: null, classification: null, unanswered, criticalFailures, compliantWeight, applicableWeight };
-  const score = Math.round((compliantWeight / applicableWeight) * 1000) / 10;
-  const classification = criticalFailures ? 'غير مقبول' : score >= 90 ? 'ممتاز' : score >= 80 ? 'جيد' : score >= 70 ? 'يحتاج تحسين' : 'غير مقبول';
+  const exact = (compliantWeight / applicableWeight) * 100;
+  const score = Math.round(exact * 10) / 10;
+  const classification = criticalFailures ? 'غير مقبول' : exact >= 90 ? 'ممتاز' : exact >= 80 ? 'جيد' : exact >= 70 ? 'يحتاج تحسين' : 'غير مقبول';
   return { score, classification, unanswered, criticalFailures, compliantWeight, applicableWeight };
 }
