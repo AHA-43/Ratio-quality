@@ -23,3 +23,23 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json" npx --yes firebase-tools deploy --only hosting --project ratio-quality
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Publish Firestore security rules (REST API)
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          P=projects/ratio-quality
+          BODY=$(jq -n --rawfile c firestore.rules '{source:{files:[{name:"firestore.rules",content:$c}]}}')
+          RULESET=$(curl -sf -X POST "https://firebaserules.googleapis.com/v1/$P/rulesets" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY" | jq -r .name)
+          echo "ruleset: $RULESET"
+          REL=$(jq -n --arg n "$P/releases/cloud.firestore" --arg r "$RULESET" '{release:{name:$n,rulesetName:$r}}')
+          curl -sf -X PATCH "https://firebaserules.googleapis.com/v1/$P/releases/cloud.firestore" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$REL" >/dev/null \
+          || curl -sf -X POST "https://firebaserules.googleapis.com/v1/$P/releases" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$P/releases/cloud.firestore\",\"rulesetName\":\"$RULESET\"}" >/dev/null
+          echo "Firestore rules published"
+          rm -f "$RUNNER_TEMP/sa.json"
