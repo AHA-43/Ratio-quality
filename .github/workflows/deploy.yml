@@ -64,3 +64,28 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$P/releases/firebase.storage/$BUCKET\",\"rulesetName\":\"$RULESET\"}" >/dev/null
           echo "Storage rules published"
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Invite users from config/invites.txt (creates account once, sends set-password email)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
+        run: |
+          set -uo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          KEY=$(grep -m1 '^VITE_FIREBASE_API_KEY=' artifacts/ratio-quality/.env.production | cut -d= -f2)
+          grep -vE '^\s*(#|$)' config/invites.txt | while read -r EMAIL; do
+            PW=$(openssl rand -base64 24)
+            BODY=$(jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p,emailVerified:true}')
+            RES=$(curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts" \
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY")
+            if echo "$RES" | jq -e '.localId' >/dev/null 2>&1; then
+              curl -s -X POST "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=$KEY" \
+                -H "Content-Type: application/json" -H "X-Firebase-Locale: ar" \
+                -d "$(jq -n --arg e "$EMAIL" '{requestType:"PASSWORD_RESET",email:$e}')" | jq -r '"invite sent to " + .email'
+            else
+              echo "skip $EMAIL: $(echo "$RES" | jq -r '.error.message // "unknown"')"
+            fi
+          done
+          rm -f "$RUNNER_TEMP/sa.json"
