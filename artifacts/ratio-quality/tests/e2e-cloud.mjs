@@ -8,7 +8,7 @@ const FS = 'http://127.0.0.1:8080/v1/projects/demo-ratio/databases/(default)/doc
 const AUTH = 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1';
 const admin = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
 const results = [];
-const step = async (name, fn) => { try { await fn(); results.push(['PASS', name]); } catch (e) { results.push(['FAIL', name, String(e.message).slice(0, 300)]); throw e; } };
+const step = async (name, fn) => { console.log('… ' + name); try { await fn(); results.push(['PASS', name]); console.log('PASS ' + name); } catch (e) { results.push(['FAIL', name, String(e.message).slice(0, 300)]); throw e; } };
 
 async function signUp(email) {
   const r = await fetch(`${AUTH}/accounts:signUp?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Test-pass-123', returnSecureToken: true }) });
