@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { tidyArabic } from './text';
+export { tidyArabic };
 
 /* ---------- Arabic voice dictation (Web Speech API; on-device/browser service, nothing stored by us) ---------- */
 type Rec = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: (e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> ; resultIndex: number }) => void; onend: () => void; onerror: () => void };
@@ -57,4 +59,19 @@ export function useShortcuts(map: Record<string, () => void>, enabled = true) {
     };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, [enabled]);
+}
+
+/* ---------- on-device writing helper (no AI, no network): phrasing starters + tidy-up with preview ---------- */
+const STARTERS: Record<'observation' | 'recommendation', string[]> = {
+  observation: ['لوحظ أن', 'تبيّن عند الفحص أن', 'بلغت القراءة', 'مما قد يؤثر على جودة المشروب', 'مما قد يؤثر على سلامة الغذاء'],
+  recommendation: ['يُوصى بـ', 'إعادة تدريب الفريق على', 'التحقق اليومي من', 'تحديث سجل', 'إبلاغ الصيانة لـ'],
+};
+export function WritingHelper({ kind, value, onApply }: { kind: 'observation' | 'recommendation'; value: string; onApply: (next: string, original: string) => void }) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const tidy = tidyArabic(value);
+  return <div className="writing-helper">
+    <div className="wh-chips">{STARTERS[kind].map(p => <button type="button" key={p} onClick={() => onApply(value.trim() ? `${value.trim()} ${p} ` : `${p} `, value)}>{p}</button>)}</div>
+    {value.trim().length > 8 && tidy !== value.trim() && preview === null && <button type="button" className="wh-tidy" onClick={() => setPreview(tidy)}>✨ تنسيق النص</button>}
+    {preview !== null && <div className="wh-preview"><small>المقترح (لا يغيّر المعنى — تنسيق المسافات وعلامات الترقيم فقط):</small><p>{preview}</p><div><button type="button" className="primary" onClick={() => { onApply(preview, value); setPreview(null); }}>اعتماد</button><button type="button" onClick={() => setPreview(null)}>إلغاء</button></div></div>}
+  </div>;
 }
