@@ -39,9 +39,14 @@ async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDo
     for (const a of (ans.attachments ?? []) as Att[]) {
       let path = a.storagePath;
       if (!path && a.data?.startsWith('data:')) {
-        path = `evidence/${value.id}/${a.id}.jpg`;
-        await uploadString(ref(storage!, path), a.data, 'data_url');
-        uploaded[a.id] = path;
+        const target = `evidence/${value.id}/${a.id}.jpg`;
+        try {
+          await uploadString(ref(storage!, target), a.data, 'data_url');
+          uploaded[a.id] = target;
+          path = target;
+        } catch {
+          // Storage unavailable (not enabled / offline): keep the photo locally and retry on the next save.
+        }
       }
       atts.push({ ...a, data: '', storagePath: path });
     }

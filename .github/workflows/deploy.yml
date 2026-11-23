@@ -43,3 +43,24 @@ jobs:
             -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$P/releases/cloud.firestore\",\"rulesetName\":\"$RULESET\"}" >/dev/null
           echo "Firestore rules published"
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Publish Storage security rules (needs Storage enabled)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          P=projects/ratio-quality
+          BUCKET=ratio-quality.firebasestorage.app
+          BODY=$(jq -n --rawfile c storage.rules '{source:{files:[{name:"storage.rules",content:$c}]}}')
+          RULESET=$(curl -sf -X POST "https://firebaserules.googleapis.com/v1/$P/rulesets" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY" | jq -r .name)
+          REL=$(jq -n --arg n "$P/releases/firebase.storage/$BUCKET" --arg r "$RULESET" '{release:{name:$n,rulesetName:$r}}')
+          curl -sf -X PATCH "https://firebaserules.googleapis.com/v1/$P/releases/firebase.storage/$BUCKET" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$REL" >/dev/null \
+          || curl -sf -X POST "https://firebaserules.googleapis.com/v1/$P/releases" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"name\":\"$P/releases/firebase.storage/$BUCKET\",\"rulesetName\":\"$RULESET\"}" >/dev/null
+          echo "Storage rules published"
+          rm -f "$RUNNER_TEMP/sa.json"
