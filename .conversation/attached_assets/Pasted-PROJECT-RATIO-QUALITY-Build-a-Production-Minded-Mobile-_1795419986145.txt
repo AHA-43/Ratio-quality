@@ -1,0 +1,645 @@
+PROJECT: RATIO QUALITY
+
+Build a Production-Minded Mobile-First Quality Inspection PWA — Functional Prototype
+
+You are a senior full-stack engineer, product designer, mobile UX specialist, and software architect.
+
+Build a fully functional, Arabic-first, mobile-first Progressive Web App called Ratio Quality | ريشيو للجودة.
+
+This application will be used by coffee shop quality inspectors to conduct branch inspections, document findings with photos, record measurements, evaluate compliance, and generate professional inspection reports directly from their smartphones.
+
+The application should combine the best workflow concepts found in modern inspection platforms such as SafetyCulture, Mitti, Joynt, GoAudits, and Lumiform, without copying their proprietary interfaces or branding.
+
+IMPORTANT: Build a real, working prototype. Not a landing page, not a static UI, and not a collection of disconnected mockups.
+
+⸻
+
+1. PRODUCT VISION
+
+The primary experience must be extremely simple:
+
+1. Open the application from the iPhone home screen.
+2. Select a branch.
+3. Start an inspection.
+4. Read one question.
+5. Select an answer.
+6. Take a photo if necessary.
+7. Write or dictate a short observation.
+8. Continue to the next question.
+9. Complete the inspection.
+10. Review results and generate a professional Arabic PDF report.
+
+An inspector should not need to navigate complex menus while standing behind a coffee bar.
+
+Prioritize speed, clarity, reliability, and minimal interaction.
+
+2. TECH STACK
+
+Use:
+
+* React
+* TypeScript
+* Vite
+* Tailwind CSS
+* shadcn/ui
+* Lucide icons
+* IndexedDB with Dexie for local data persistence
+* PWA manifest and service worker
+* React Hook Form and Zod for validation
+* A modular, component-based architecture
+
+For the initial prototype:
+
+* Do not require Firebase or Supabase.
+* Do not require paid APIs.
+* Do not require authentication.
+* Do not depend on external services for the core inspection workflow.
+* Store inspections, answers, and photo attachments locally in IndexedDB.
+* Clearly indicate that local data is not backed up or synchronized across devices.
+* Make the architecture ready for a future Supabase integration.
+
+Use standard, portable libraries and keep the project compatible with GitHub and Claude Code.
+
+3. VISUAL DESIGN SYSTEM
+
+Create a premium, polished, modern enterprise application.
+
+Design direction:
+
+* Arabic-first interface with correct RTL layout.
+* IBM Plex Sans Arabic typography.
+* Deep navy as the primary color.
+* Warm off-white backgrounds.
+* Neutral cards with subtle borders.
+* Green for compliant.
+* Red for non-compliant.
+* Amber for warnings.
+* Large touch-friendly controls.
+* Excellent readability.
+* Minimal visual clutter.
+* Consistent spacing and typography.
+* Smooth, subtle transitions.
+
+The interface should feel like a professionally designed mobile SaaS product, not a generic dashboard template.
+
+Prioritize iPhone screens, especially widths around 375–430 px.
+
+Support tablets and desktop layouts as secondary experiences.
+
+Use a bottom navigation bar with:
+
+* الرئيسية
+* الزيارات
+* الإجراءات
+* التقارير
+* الإعدادات
+
+Every visible navigation item must lead to a functional screen. Avoid fake controls.
+
+4. HOME DASHBOARD
+
+Create a useful home screen showing:
+
+* Welcome message.
+* Primary “بدء زيارة جديدة” button.
+* Continue unfinished inspection.
+* Recent inspections.
+* Completed inspection count.
+* Open corrective actions count.
+* Branch performance overview.
+
+Use realistic demonstration data, clearly labeled as demo data.
+
+The most prominent action should always be starting or continuing an inspection.
+
+5. BRANCH MANAGEMENT
+
+Create a branch directory.
+
+Initial demo branches:
+
+* المطيرفي
+* النسيم
+* الكوت
+
+Each branch should have:
+
+* Unique ID.
+* Branch name.
+* Location description.
+* Branch manager (optional).
+* Status.
+* Inspection history.
+* Open findings.
+* Previous compliance score.
+
+Allow adding, editing, and archiving branches locally.
+
+6. START INSPECTION
+
+When starting a new inspection, ask for:
+
+* Branch.
+* Inspector name.
+* Inspection date.
+* Inspection time.
+* Inspection type.
+* Shift: صباحية / مسائية.
+* Number of employees present.
+
+Automatically populate the current date and time, while allowing edits.
+
+Initial inspection types:
+
+* زيارة جودة شاملة
+* فحص جودة القهوة
+* فحص المعدات
+* زيارة متابعة
+
+Only show questions relevant to the selected inspection template.
+
+7. INSPECTION ENGINE
+
+This is the most important component.
+
+Create a flexible, configuration-driven inspection engine.
+
+Each question must support:
+
+* Stable question ID.
+* Section.
+* Arabic question title.
+* Optional description.
+* Acceptance criteria.
+* Severity.
+* Scoring weight.
+* Answer type.
+* Optional numeric measurements.
+* Optional minimum/maximum acceptable values.
+* Optional photo evidence.
+* Optional video evidence.
+* Observation.
+* Recommendation.
+* Corrective action.
+* Recurring issue flag.
+* Follow-up requirements.
+
+Support answer types:
+
+* Pass / Fail / Not Applicable.
+* Numeric measurement.
+* Text.
+* Single choice.
+* Multiple choice.
+* Rating from 1 to 5.
+* Date.
+* Photo evidence.
+
+The question configuration must be separated from UI components.
+
+Questions and standards must be editable later without rewriting the application.
+
+8. INITIAL INSPECTION CHECKLIST
+
+Build an initial comprehensive coffee quality checklist containing 46 questions.
+
+Organize it into four sections:
+
+Section 1 — المعدات والجاهزية
+15 questions.
+
+Cover espresso machine cleanliness, group heads, shower screens, portafilters, steam wands, machine pressure and temperature, leaks, drainage, grinders, burrs, refrigerator temperatures, water TDS, water filters, cleaning equipment, and kettle condition.
+
+Section 2 — جودة القهوة
+11 questions.
+
+Cover coffee bean condition, hopper cleanliness, roast freshness, grinder calibration, espresso dose, yield, extraction time, taste balance, preparation consistency, V60 recipes, and brewing parameters.
+
+Section 3 — تجربة المشروبات والتذوق
+10 questions.
+
+Cover espresso tasting, hot latte, iced latte, flat white, V60, milk steaming, milk temperature, latte art, cold drink balance, and abnormal flavors.
+
+Section 4 — أداء الباريستا
+10 questions.
+
+Cover recipe knowledge, coffee knowledge, grinder adjustments, distribution and tamping, approved tools, milk steaming, cleanliness, cloth separation, speed and quality under pressure, and preparation time.
+
+Use stable IDs 1–46.
+
+IMPORTANT:
+
+The exact official Ratio Quality checklist will be provided later.
+
+Treat the initial checklist as provisional.
+
+Do not invent official company standards.
+
+Make all acceptance criteria, severity values, and numeric thresholds configurable.
+
+9. MOBILE QUESTION EXPERIENCE
+
+Show one question at a time.
+
+Each screen must display:
+
+* Section name.
+* Question number.
+* Progress indicator.
+* Question title.
+* Acceptance criteria.
+* Severity indicator.
+* Answer controls.
+* Optional measurement fields.
+* Camera attachment button.
+* Notes field.
+* Recommendation field.
+* Previous and Next buttons.
+
+Make Pass / Fail / N/A selection extremely easy.
+
+When selecting “غير مطابق”:
+
+* Expand the observation field.
+* Show the recommendation field.
+* Show the photo attachment area.
+* Show corrective action options.
+* Highlight severity.
+* Require an observation before final submission.
+
+When selecting “مطابق”:
+
+* Keep the interface minimal.
+* Allow optional photos or measurements.
+
+When selecting “لا ينطبق”:
+
+* Exclude the question from scoring.
+* Allow an optional explanation.
+
+Support a “ملاحظة متكررة” toggle.
+
+Allow navigating backward without losing answers.
+
+Provide a section overview so inspectors can jump to a specific question when necessary.
+
+Automatically save every change.
+
+10. CAMERA AND MEDIA
+
+Implement actual device camera/file input support.
+
+Requirements:
+
+* Take a photo using the smartphone camera.
+* Select an existing image.
+* Attach multiple images to a question.
+* Preview attachments.
+* Remove attachments.
+* Add optional image captions.
+* Compress images before storage where appropriate.
+* Preserve readable evidence.
+* Associate each attachment with its inspection and question.
+
+Support optional video attachment with explicit file-size limits and clear storage warnings.
+
+Do not implement fake camera interactions.
+
+Do not upload evidence to an external service in the prototype.
+
+11. MEASUREMENTS AND COFFEE QUALITY
+
+Support structured numeric inputs.
+
+Examples:
+
+Water quality:
+
+* TDS in ppm.
+* Approved minimum.
+* Approved maximum.
+* Actual reading.
+
+Espresso:
+
+* Coffee origin or recipe.
+* Dose in grams.
+* Yield in grams.
+* Extraction time in seconds.
+* Temperature where applicable.
+* Pressure where applicable.
+
+Refrigerators:
+
+* Temperature in °C.
+* Approved range.
+* Actual reading.
+
+Tasting:
+
+* Sweetness.
+* Acidity.
+* Body.
+* Balance.
+* Overall rating.
+
+Show a clear comparison between the approved value and actual measurement.
+
+Do not hardcode universal coffee standards.
+
+The inspector must be able to override or configure standards through the application’s settings.
+
+12. WEIGHTED SCORING ENGINE
+
+Implement an independent scoring module.
+
+Severity weights:
+
+* Critical = 10
+* Major = 5
+* Minor = 1
+
+Formula:
+
+Weighted Compliance = (Sum of compliant applicable question weights / Sum of all applicable question weights) × 100.
+
+Exclude Not Applicable questions from the denominator.
+
+Classification:
+
+* 90% or higher: ممتاز
+* 80% to below 90%: جيد
+* 70% to below 80%: يحتاج تحسين
+* Below 70%: غير مقبول
+
+Critical failure rule:
+
+If any critical question is non-compliant, the final classification must automatically become “غير مقبول” regardless of the weighted score.
+
+Keep the calculated score visible separately from the overridden classification.
+
+Do not calculate a final score if required questions are unanswered.
+
+Include unit tests for the scoring logic.
+
+13. CORRECTIVE ACTIONS
+
+When an issue is detected, allow creating a corrective action.
+
+Fields:
+
+* Linked inspection.
+* Linked question.
+* Finding description.
+* Required corrective action.
+* Severity.
+* Responsible person.
+* Due date.
+* Status.
+* Evidence attachments.
+
+Statuses:
+
+* مفتوح
+* قيد المعالجة
+* بانتظار التحقق
+* مغلق
+
+Allow an inspector to record that an issue was corrected during the visit.
+
+Do not automatically treat a corrected finding as originally compliant.
+
+Preserve the initial inspection result and track corrective action separately.
+
+14. INSPECTION SUMMARY
+
+After completing the inspection, show:
+
+* Branch name.
+* Inspector.
+* Date.
+* Total applicable questions.
+* Pass count.
+* Fail count.
+* N/A count.
+* Weighted compliance percentage.
+* Final classification.
+* Critical findings.
+* Major findings.
+* Minor findings.
+* Recurring findings.
+* Corrective actions.
+* Photos and evidence.
+
+Group findings by section and severity.
+
+Allow the inspector to review and edit answers before finalizing.
+
+Once finalized, preserve a snapshot of the question definitions and standards used in that inspection.
+
+15. PROFESSIONAL REPORT GENERATION
+
+Generate a professional Arabic RTL inspection report.
+
+The report should include:
+
+1. Cover page.
+2. Branch and visit information.
+3. Executive summary.
+4. Weighted compliance score.
+5. Classification.
+6. Section-by-section results.
+7. Non-compliant findings.
+8. Evidence photographs.
+9. Observations.
+10. Recommendations.
+11. Corrective action plan.
+12. Closing remarks.
+
+Create a clean branded layout with readable Arabic typography.
+
+The report must be suitable for management review.
+
+For the prototype, implement reliable print-to-PDF using the browser print functionality.
+
+Ensure the print layout works with Arabic RTL text and multiple pages.
+
+Do not advertise a downloadable PDF feature unless it actually works.
+
+16. INSPECTION HISTORY
+
+Create a searchable inspection history.
+
+Allow filtering by:
+
+* Branch.
+* Date.
+* Inspector.
+* Status.
+* Classification.
+
+Users must be able to:
+
+* Open previous inspections.
+* Continue drafts.
+* View completed reports.
+* Review findings.
+* See associated corrective actions.
+
+Do not silently overwrite finalized inspection results.
+
+17. OFFLINE-FIRST BEHAVIOR
+
+The application must support field use with unreliable internet.
+
+Use IndexedDB to persist:
+
+* Inspections.
+* Answers.
+* Question definitions.
+* Branches.
+* Corrective actions.
+* Image attachments.
+
+The application shell should be available offline after successful installation and caching.
+
+Test offline functionality realistically.
+
+Do not claim cross-device synchronization.
+
+Do not claim cloud backup.
+
+Provide a clear local-data warning.
+
+Implement an export/import mechanism for prototype backup if practical.
+
+18. FUTURE SUPABASE INTEGRATION
+
+Do not connect Supabase yet.
+
+However, organize data access through repository interfaces.
+
+Prepare for future entities:
+
+* organizations
+* branches
+* users
+* inspection_templates
+* template_sections
+* template_questions
+* inspections
+* inspection_answers
+* evidence_media
+* corrective_actions
+* equipment
+* audit_logs
+
+Keep database access separate from business logic and UI components.
+
+Future integration must not require rewriting the inspection engine.
+
+19. PWA INSTALLATION
+
+Implement:
+
+* Web app manifest.
+* Application icons.
+* Standalone display mode.
+* Service worker.
+* Offline application shell.
+* Mobile viewport configuration.
+
+The application should be installable on iPhone using Safari’s Add to Home Screen functionality.
+
+Provide a short Arabic installation guide inside settings.
+
+20. DEVELOPMENT PRIORITIES
+
+Build in phases.
+
+Phase A:
+
+* Application shell.
+* Design system.
+* Home screen.
+* Branch selection.
+* New inspection workflow.
+* First working inspection question.
+* Local persistence.
+
+Phase B:
+
+* All 46 questions.
+* Measurements.
+* Camera attachments.
+* Auto-save.
+* Scoring engine.
+
+Phase C:
+
+* Corrective actions.
+* Inspection summary.
+* History.
+* Printable report.
+
+Phase D:
+
+* PWA.
+* Offline testing.
+* UI polish.
+* Bug fixing.
+
+Do not skip functional testing.
+
+21. ACCEPTANCE TESTS
+
+Verify that a user can:
+
+1. Open the app on a mobile screen.
+2. Create a new inspection.
+3. Select a branch.
+4. Answer multiple questions.
+5. Attach a real photo.
+6. Add observations.
+7. Leave the application.
+8. Reopen the saved draft.
+9. Continue where they stopped.
+10. Finish all required questions.
+11. View a correct weighted score.
+12. Trigger automatic rejection for a critical failure.
+13. Create a corrective action.
+14. Generate a readable Arabic report.
+15. View previous inspections.
+16. Use the installed PWA offline after initial setup.
+
+Fix issues discovered during testing.
+
+22. IMPORTANT DEVELOPMENT RULES
+
+* Do not build a marketing website.
+* Do not build fake functionality.
+* Do not add unnecessary animations.
+* Do not introduce paid services.
+* Do not add AI features yet.
+* Do not connect external databases yet.
+* Do not sacrifice mobile usability for desktop aesthetics.
+* Do not hardcode business rules inside UI components.
+* Do not invent official Ratio Quality standards.
+* Do not use mock data as if it were real inspection results.
+* Do not silently delete user data.
+
+Focus on a genuinely usable field inspection experience.
+
+FINAL DELIVERABLE
+
+Build the application and provide:
+
+1. A working live preview.
+2. A clear explanation of implemented functionality.
+3. Any known limitations.
+4. Instructions for testing on iPhone.
+5. A clean project structure ready for future development in Claude Code.
+
+Start by implementing the core end-to-end inspection flow, then expand it incrementally.
+
+The final product must be a functioning prototype that demonstrates the complete journey from starting an inspection to producing a professional quality report.

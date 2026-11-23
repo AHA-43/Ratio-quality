@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Ratio Quality | ريشيو للجودة"
+description = "An Arabic-first, mobile-first quality inspection PWA for coffee shop teams to run branch visits, record findings and evidence offline, track corrective actions, and print professional inspection reports."
+version = "1.0.0"
+id = "artifacts/ratio-quality"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18635
+
+[services.development]
+run = "pnpm --filter @workspace/ratio-quality run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ratio-quality", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/ratio-quality/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18635"
+BASE_PATH = "/"
