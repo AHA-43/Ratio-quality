@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function hasProfile() { return signedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && (!hasProfile() || me().get('active', true) != false); }
+    function isAdmin() { return hasProfile() && me().role == 'admin'; }
+    function isLead() { return hasProfile() && me().role in ['admin', 'quality_manager']; }
+    function canApprove() { return isLead() || (hasProfile() && me().get('canApprove', false) == true); }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+
+    // Profiles: a user may create their own as a plain inspector; only admins change roles.
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isLead());
+      allow create: if signedIn() && request.auth.uid == uid
+        && request.resource.data.role == 'inspector' && request.resource.data.canApprove == false;
+      allow update: if isAdmin()
+        || (request.auth.uid == uid && !changed().hasAny(['role', 'canApprove', 'active']));
+      allow delete: if false;
+    }
+
+    match /branches/{id} {
+      allow read: if active();
+      allow create: if active();
+      allow update, delete: if isLead();
+    }
+
+    // Inspections: drafts are editable; submitted ones only by approvers (approve / return);
+    // approved ones are locked for everyone.
+    match /inspections/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.get('workflow', '') != 'approved';
+      allow update: if active() && resource.data.get('workflow', '') != 'approved' && (
+           (resource.data.status == 'draft' && request.resource.data.get('workflow', '') != 'approved')
+        || (resource.data.status == 'finalized' && canApprove())
+        || (resource.data.status == 'finalized' && changed().hasOnly(['number', 'updatedAt']))
+      );
+      allow delete: if isAdmin() || (active() && resource.data.status == 'draft');
+    }
+
+    // Corrective actions: closing (verification) and reopening are reserved to quality leads.
+    match /actions/{id} {
+      allow read, create: if active();
+      allow update: if active()
+        && (request.resource.data.status != 'مغلق' || isLead())
+        && (resource.data.status != 'مغلق' || isLead());
+      allow delete: if isLead();
+    }
+
+    match /equipment/{id} {
+      allow read, create, update: if active();
+      allow delete: if isLead();
+    }
+    match /baristas/{id} {
+      allow read, create, update: if active();
+      allow delete: if isLead();
+    }
+    // Individual barista evaluations are personnel data: evaluator and quality leads only.
+    match /baristaEvals/{id} {
+      allow read: if isLead() || (signedIn() && resource.data.evaluatorUid == request.auth.uid);
+      allow create: if active() && request.resource.data.evaluatorUid == request.auth.uid;
+      allow update: if isLead() || (signedIn() && resource.data.evaluatorUid == request.auth.uid);
+      allow delete: if isLead();
+    }
+
+    // Compressed evidence photos (free-tier alternative to Cloud Storage). Immutable once written.
+    match /photos/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.data is string && request.resource.data.data.size() < 1000000
+        && request.resource.data.data.matches('^data:image/.*');
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // Shared configuration (mandatory evidence, email recipient lists): read by all, edited by quality leads.
+    match /config/{id} {
+      allow read: if active();
+      allow write: if isLead();
+    }
+
+    // Append-only audit trail.
+    match /audit/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if isLead();
+      allow update, delete: if false;
+    }
+
+    // Inspection number sequence: increments by exactly one.
+    match /counters/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.seq == 1;
+      allow update: if active() && (request.resource.data.seq == resource.data.seq + 1 || request.resource.data.seq == 1);
+    }
+  }
+}
