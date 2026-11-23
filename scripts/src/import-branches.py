@@ -33,7 +33,9 @@ for n, r in rows:
         'openedAt': opened, 'openedAtRaw': None if opened or r[4] is None else str(r[4]),
         'closedAtRaw': closed_raw, 'branchNumber': r[7], 'acquisitionRaw': r[9], 'noteRaw': r[10],
         'mapUrl': r[5], 'phone': r[6],
-        'status': 'needs-review' if closed_raw or not r[4] else 'active',
+        # Decision rule (documented in docs/branch-import-report.md): a closure date => closed (kept for history,
+        # hidden from new visits). No opening date but a branch code => treated as newly opening, selectable.
+        'status': 'closed' if closed_raw else ('needs-review' if not code and not r[4] else 'active'),
         'sourceRow': n, 'flags': flags,
     })
     if flags: issues.append((n, name, code_raw, flags))

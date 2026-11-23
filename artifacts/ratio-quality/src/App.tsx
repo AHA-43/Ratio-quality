@@ -393,16 +393,23 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const selectPhoto = async (files: FileList | null) => {
     if (!files) return;
     const readData = (blob: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(); r.readAsDataURL(blob); });
+    // Always compress: keeps evidence readable (max 1600px) and small enough to sync for free (< ~600 KB).
     const toData = async (file: File) => {
-      if (file.size < 1400000 || !('createImageBitmap' in window)) return readData(file);
+      if (!('createImageBitmap' in window)) return readData(file);
       try {
         const bitmap = await createImageBitmap(file);
-        const scale = Math.min(1, 1800 / Math.max(bitmap.width, bitmap.height));
-        const canvas = document.createElement('canvas'); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
-        const context = canvas.getContext('2d'); if (!context) return readData(file);
-        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height); bitmap.close();
-        const compressed = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', .86));
-        return readData(compressed || file);
+        let side = 1600, quality = .8, out = '';
+        for (let k = 0; k < 6; k++) {
+          const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+          const canvas = document.createElement('canvas'); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
+          const context = canvas.getContext('2d'); if (!context) return readData(file);
+          context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+          out = canvas.toDataURL('image/jpeg', quality);
+          if (out.length < 600_000) break;
+          side = Math.round(side * .8); quality = Math.max(.55, quality - .07);
+        }
+        bitmap.close();
+        return out;
       } catch { return readData(file); }
     };
     const images = await Promise.all([...files].filter(f => f.type.startsWith('image/')).map(async f => ({ id: newId(), name: f.name, type: 'image/jpeg', data: await toData(f), caption: '' })));

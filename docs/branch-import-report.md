@@ -1,6 +1,6 @@
 # Branch import validation report
 
-Rows: 136 · active: 119 · needs-review: 17
+Rows: 136 · active: 124 · needs-review: 1
 
 Nothing was corrected silently. Rows below need an owner decision before production load.
 
@@ -36,3 +36,10 @@ Nothing was corrected silently. Rows below need an owner decision before product
 | 135 | الخبر - ايفاء | KHB.11 | no-opening-date |
 | 136 | مصر | — | missing-code, no-opening-date |
 | 137 | حائل- | HIL.03 | no-opening-date |
+
+## Decisions applied
+- Rows with a closure date → **closed**: kept for historical reports, not offered for new visits.
+- Rows without an opening date but with a branch code → **active** (treated as newly opening).
+- `الاحساء - الكلية التقنية` (no code, has opening date) → active, identified internally by its Excel row.
+- `مصر` (no code, no opening date, outside KSA) → hidden pending review.
+- Duplicate codes (`RIY.13`, `QTF.02`) remain separate branches with internal IDs `ROW{n}`.

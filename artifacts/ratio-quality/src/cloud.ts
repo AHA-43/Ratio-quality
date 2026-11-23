@@ -2,7 +2,7 @@
 // (VITE_FIREBASE_* env vars) users must sign in and data is mirrored to Firestore + Storage.
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, type User } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
 const env: Record<string, string | undefined> = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
@@ -29,7 +29,9 @@ export const isSignedIn = () => Boolean(auth?.currentUser);
 type Att = { id: string; data: string; storagePath?: string; [k: string]: unknown };
 type AnyDoc = { id: string; [k: string]: any };
 
-/** Uploads new photos (base64) to Storage and returns a copy safe for Firestore (no base64). */
+/** Moves photos out of the inspection document into `photos/{id}` (one Firestore doc per compressed photo,
+ *  free tier, same access rules). The inspection keeps only a reference (photoId). */
+const uploadedPhotos = new Set<string>();
 async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDoc; uploaded: Record<string, string> }> {
   const uploaded: Record<string, string> = {};
   if (store !== 'inspections' || !value.answers) return { cloudCopy: value, uploaded };
@@ -37,22 +39,26 @@ async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDo
   for (const [qid, ans] of Object.entries<any>(value.answers)) {
     const atts: Att[] = [];
     for (const a of (ans.attachments ?? []) as Att[]) {
-      let path = a.storagePath;
-      if (!path && a.data?.startsWith('data:')) {
-        const target = `evidence/${value.id}/${a.id}.jpg`;
+      let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);
+      if (!ref && a.data?.startsWith('data:') && a.data.length < 1_000_000) {
         try {
-          await uploadString(ref(storage!, target), a.data, 'data_url');
-          uploaded[a.id] = target;
-          path = target;
-        } catch {
-          // Storage unavailable (not enabled / offline): keep the photo locally and retry on the next save.
-        }
+          await setDoc(doc(fs!, 'photos', a.id), { inspectionId: value.id, questionId: Number(qid), data: a.data, uid: auth!.currentUser!.uid, at: new Date().toISOString() });
+          ref = `photos/${a.id}`; uploaded[a.id] = ref; uploadedPhotos.add(a.id);
+        } catch { /* offline or denied: photo stays on the device and is retried on next save */ }
       }
-      atts.push({ ...a, data: '', storagePath: path });
+      atts.push({ ...a, data: ref ? '' : a.data, storagePath: ref });
     }
     answers[qid] = { ...ans, attachments: atts };
   }
   return { cloudCopy: { ...value, answers }, uploaded };
+}
+
+async function resolvePhoto(path: string): Promise<string> {
+  if (path.startsWith('photos/')) {
+    const snap = await getDoc(doc(fs!, 'photos', path.slice(7)));
+    return snap.exists() ? String(snap.data().data ?? '') : '';
+  }
+  return getDownloadURL(ref(storage!, path)).catch(() => '');
 }
 
 export async function pushDoc(store: string, value: AnyDoc) {
@@ -72,7 +78,7 @@ export async function pullAll(store: string): Promise<AnyDoc[]> {
     const v = d.data() as AnyDoc;
     if (store === 'inspections' && v.answers) {
       for (const ans of Object.values<any>(v.answers)) {
-        for (const a of ans.attachments ?? []) if (a.storagePath && !a.data) a.data = await getDownloadURL(ref(storage!, a.storagePath)).catch(() => '');
+        for (const a of ans.attachments ?? []) if (a.storagePath && !a.data) a.data = await resolvePhoto(a.storagePath).catch(() => '');
       }
     }
     out.push(v);

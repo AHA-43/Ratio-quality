@@ -64,6 +64,16 @@ service cloud.firestore {
       allow delete: if isLead();
     }
 
+    // Compressed evidence photos (free-tier alternative to Cloud Storage). Immutable once written.
+    match /photos/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.data is string && request.resource.data.data.size() < 1000000
+        && request.resource.data.data.matches('^data:image/.*');
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
     // Shared configuration (mandatory evidence, email recipient lists): read by all, edited by quality leads.
     match /config/{id} {
       allow read: if active();

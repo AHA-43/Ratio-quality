@@ -86,3 +86,10 @@ test('shared config: everyone reads, only quality leads write', async () => {
   await assertSucceeds(setDoc(doc(as('qm'), 'config/app'), { photoRequiredOnFail: [5] }));
   await assertSucceeds(getDoc(doc(as('insp'), 'config/app')));
 });
+test('photos: owner-tagged images only, immutable', async () => {
+  await assertSucceeds(setDoc(doc(as('insp'), 'photos/p1'), { uid: 'insp', data: 'data:image/jpeg;base64,AAAA', inspectionId: 'draft1' }));
+  await assertFails(setDoc(doc(as('insp'), 'photos/p2'), { uid: 'qm', data: 'data:image/jpeg;base64,AAAA' }));
+  await assertFails(setDoc(doc(as('insp'), 'photos/p3'), { uid: 'insp', data: 'javascript:alert(1)' }));
+  await assertFails(updateDoc(doc(as('insp'), 'photos/p1'), { data: 'data:image/png;base64,BBBB' }));
+  await assertSucceeds(getDoc(doc(as('insp2'), 'photos/p1')));
+});

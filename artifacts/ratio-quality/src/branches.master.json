@@ -67,7 +67,7 @@
   "noteRaw": "مغلق مؤقتًا",
   "mapUrl": "https://goo.gl/maps/wq5kDsguvk1R8tUr7",
   "phone": 533595111,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 6,
   "flags": [
    "has-closure-date-needs-status-confirmation",
@@ -268,7 +268,7 @@
   "noteRaw": null,
   "mapUrl": "https://goo.gl/maps/4eiq1VZ7P6xbLEDb9",
   "phone": 566373727,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 17,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -306,7 +306,7 @@
   "noteRaw": null,
   "mapUrl": "https://goo.gl/maps/umkfKv2njXjA29HF6",
   "phone": 552525001,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 19,
   "flags": [
    "has-closure-date-needs-status-confirmation",
@@ -491,7 +491,7 @@
   "noteRaw": null,
   "mapUrl": null,
   "phone": 506177710,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 29,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -511,7 +511,7 @@
   "noteRaw": null,
   "mapUrl": "مغلق بالنظام",
   "phone": 506177710,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 30,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -751,7 +751,7 @@
   "noteRaw": null,
   "mapUrl": "RATIO Speciality Coffee | ريشيو للقهوة المختصة - Google Maps",
   "phone": 540425953,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 43,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -825,7 +825,7 @@
   "noteRaw": null,
   "mapUrl": "https://goo.gl/maps/UfunoHbHaKY8UxMSA",
   "phone": null,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 47,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -901,7 +901,7 @@
   "noteRaw": null,
   "mapUrl": null,
   "phone": 530620212,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 51,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -1159,7 +1159,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/s3RVhx659jPS3zCE7",
   "phone": 532209666,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 65,
   "flags": [
    "duplicate-code",
@@ -1235,7 +1235,7 @@
   "noteRaw": " حسب تاريخ توقيع الملحق ",
   "mapUrl": null,
   "phone": 559365055,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 69,
   "flags": [
    "has-closure-date-needs-status-confirmation",
@@ -1256,7 +1256,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/a8v8cipGPciFYKjy5",
   "phone": null,
-  "status": "needs-review",
+  "status": "closed",
   "sourceRow": 70,
   "flags": [
    "has-closure-date-needs-status-confirmation"
@@ -2388,7 +2388,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/u9qs7VrCK7uh7Dma9",
   "phone": null,
-  "status": "needs-review",
+  "status": "active",
   "sourceRow": 132,
   "flags": [
    "no-opening-date"
@@ -2408,7 +2408,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/rHdXkvQYZeD1enMj7",
   "phone": null,
-  "status": "needs-review",
+  "status": "active",
   "sourceRow": 133,
   "flags": [
    "no-opening-date"
@@ -2428,7 +2428,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/CSQZd3AYdwxZ5Lbs6",
   "phone": null,
-  "status": "needs-review",
+  "status": "active",
   "sourceRow": 134,
   "flags": [
    "duplicate-code",
@@ -2449,7 +2449,7 @@
   "noteRaw": null,
   "mapUrl": "https://maps.app.goo.gl/3QMH1e6EFduFC6A99",
   "phone": null,
-  "status": "needs-review",
+  "status": "active",
   "sourceRow": 135,
   "flags": [
    "no-opening-date"
@@ -2490,7 +2490,7 @@
   "noteRaw": null,
   "mapUrl": null,
   "phone": null,
-  "status": "needs-review",
+  "status": "active",
   "sourceRow": 137,
   "flags": [
    "no-opening-date"

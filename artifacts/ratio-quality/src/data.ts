@@ -40,7 +40,7 @@ export type Inspection = {
   };
   previous?: { inspectionId: string; date: string; score: number | null; classification: string | null };
 };
-export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean };
+export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
   branchId?: string; createdAt?: string; history?: { status: string; at: string; by: string; note?: string }[]; verifiedBy?: string; verifiedAt?: string; equipmentId?: string; recurring?: boolean };
 export type Equipment = { id: string; branchId: string; branchName: string; category: string; manufacturer: string; model: string; serial?: string; installedAt?: string; status: 'يعمل' | 'يعمل بملاحظات' | 'متوقف' | 'خارج الخدمة'; lastMaintenance?: string; nextMaintenance?: string; log: { at: string; type: 'صيانة' | 'طلب صيانة' | 'ملاحظة فحص'; note: string; by: string }[]; updatedAt: string };
@@ -143,16 +143,25 @@ export async function syncAll() {
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 export const emptyAnswer = (): Answer => ({ value: null, observation: '', recommendation: '', recurring: false, severity: 'Minor', attachments: [] });
 type MasterBranch = { id: string; code: string | null; nameAr: string; status: string; ownership?: string };
+const BRANCH_MASTER_VERSION = 'master-2';
 export async function initializeBranches() {
   const branches = await list<Branch>('branches');
-  if (branches.some(b => b.code)) return;
-  // Approved branch master (see docs/branch-import-report.md). Branches needing owner review stay archived/hidden.
+  let applied = '';
+  try { applied = localStorage.getItem('rq-branch-master') ?? ''; } catch { /* ignore */ }
+  if (applied === BRANCH_MASTER_VERSION && branches.some(b => b.code)) return;
+  // Approved branch master (see docs/branch-import-report.md): upsert by id, keep user edits like manager names.
+  const byId = new Map(branches.map(b => [b.id, b]));
+  const stamp = new Date().toISOString();
   for (const m of masterBranches as MasterBranch[]) {
     const city = m.nameAr.split(' - ')[0].trim();
-    await put('branches', { id: m.id, code: m.code ?? undefined, name: m.nameAr.trim(), city, archived: m.status !== 'active' } satisfies Branch);
+    const prev = byId.get(m.id);
+    const archived = m.status !== 'active';
+    if (prev && prev.archived === archived && prev.name === m.nameAr.trim()) continue;
+    await put('branches', { ...(prev ?? {}), id: m.id, code: m.code ?? undefined, name: m.nameAr.trim(), city: prev?.city || city, archived, updatedAt: stamp } as Branch);
   }
   // Old sample branches are archived (not deleted) so existing drafts keep working.
   for (const b of branches.filter(b => b.demo && !b.archived)) await put('branches', { ...b, archived: true });
+  try { localStorage.setItem('rq-branch-master', BRANCH_MASTER_VERSION); } catch { /* ignore */ }
 }
 export const loadQuestions = () => localRepository.loadQuestions();
 export const saveQuestions = (questions: Question[]) => localRepository.saveQuestions(questions);
