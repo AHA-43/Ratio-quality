@@ -14,3 +14,10 @@
 
 ## Still needs owner input before building
 Corrective-action clock start, recurring-finding window, roles & barista data access, signature fallback, retention period, data region, email provider, AI provider, licensed fonts (TT Fors, Volt Arabic) and vector logos, branch status for the 30 flagged rows.
+
+## Firebase step 1 (added)
+- `src/cloud.ts`: Auth (email/password), Firestore mirror (offline cache), photos uploaded to Storage instead of stored as base64 in the document.
+- `src/AuthGate.tsx`: login screen + sync before the app opens; skipped when Firebase is not configured. Offline users with a saved session continue with local data.
+- `firestore.rules` (finalized inspections cannot be edited or deleted), `storage.rules` (images < 5 MB, no overwrite/delete), `firebase.json`.
+- 120 active branches from the approved master now seed the branch list (flagged ones are archived until reviewed; old sample branches are archived, not deleted).
+- Not yet: roles, approval workflow, server-side scoring, reports/email. Rules are "any signed-in user" for now.

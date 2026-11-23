@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { QUESTIONS } from './data.ts';
+import { QUESTIONS } from './checklist.ts';
 import { calculateScore } from './scoring.ts';
 import type { Answer, Question } from './data';
 
