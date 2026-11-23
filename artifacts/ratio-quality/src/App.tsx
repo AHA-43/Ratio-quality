@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { Form } from '@/components/ui/form';
 import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
+import { cloudEnabled, signOutUser } from './cloud';
 import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
@@ -43,21 +44,32 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   return <ErrorBoundary resetKey={location}>{children}</ErrorBoundary>;
 }
 
+function useOnline() {
+  const [online, setOnline] = useState(typeof navigator === 'undefined' ? true : navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true), off = () => setOnline(false);
+    window.addEventListener('online', on); window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
+  return online;
+}
+
 function AppShell({ children }: { children: ReactNode }) {
+  const online = useOnline();
   const [location] = useLocation();
   const [mobileMenu, setMobileMenu] = useState(false);
   return <div dir="rtl" className="app-shell">
     <aside className="side-rail">
-      <Link href="/" className="brand-lockup"><span className="brand-mark"><Coffee size={22}/></span><span><b>Ratio Quality</b><small>ريشيو للجودة</small></span></Link>
+      <Link href="/" className="brand-lockup" aria-label="ريشيو للجودة"><img src="/brand/logo-ar-white.png" alt="ريشيو"/><span className="brand-sub">إدارة الجودة</span></Link>
       <div className="rail-label">مساحة العمل</div>
       {nav.map(item => <Link key={item.href} href={item.href} data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`} className={`rail-link ${location === item.href ? 'active' : ''}`}><item.icon size={18}/><span>{item.label}</span></Link>)}
-      <div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>بياناتك محفوظة على هذا الجهاز فقط</span></div><span className="rail-version">الإصدار المحلي · 1.0</span></div>
+      <div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>{cloudEnabled ? 'تُحفظ بياناتك على الجهاز وتُزامن مع حسابك عند توفر الإنترنت' : 'بياناتك محفوظة على هذا الجهاز فقط'}</span></div><span className="rail-version">ريشيو للجودة · 1.0</span></div>
     </aside>
     <div className="main-column">
       <header className="topbar">
         <button className="icon-button menu-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="فتح القائمة" data-testid="button-menu"><MoreHorizontal size={22}/></button>
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
-        <div className="topbar-right"><span className="local-chip"><span/> محلي على هذا الجهاز</span><span className="avatar">ج</span></div>
+        <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? 'متصل · تتم المزامنة' : 'دون اتصال · الحفظ على الجهاز'}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {mobileMenu && <div className="mobile-menu">{nav.map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <main className="page-wrap">{children}</main>
@@ -69,8 +81,8 @@ function AppShell({ children }: { children: ReactNode }) {
 function PageTitle({ eyebrow, title, detail, action }: { eyebrow?: string; title: string; detail?: string; action?: ReactNode }) {
   return <div className="page-title"><div>{eyebrow && <div className="eyebrow">{eyebrow}</div>}<h1>{title}</h1>{detail && <p>{detail}</p>}</div>{action}</div>;
 }
-function Button({ children, variant = 'primary', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'soft' | 'outline' | 'danger' }) {
-  return <button className={`button button-${variant} ${props.className || ''}`} {...props}>{children}</button>;
+function Button({ children, variant = 'primary', className = '', ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'soft' | 'outline' | 'danger' }) {
+  return <button {...props} className={`button button-${variant} ${className}`}>{children}</button>;
 }
 function EmptyState({ icon: Icon = ClipboardCheck, title, text, action }: { icon?: typeof ClipboardCheck; title: string; text: string; action?: ReactNode }) {
   return <div className="empty-state"><span className="empty-icon"><Icon size={24}/></span><h3>{title}</h3><p>{text}</p>{action}</div>;
@@ -108,7 +120,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
   return <div className="page-content">
     <PageTitle eyebrow="لوحة الجودة · اليوم" title="صباح الجودة" detail="متابعة الزيارات والإجراءات من نقطة العمل." action={<Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> بدء زيارة</Link>}/>
     {data.error && <div className="alert alert-danger">{data.error}<Button variant="outline" onClick={data.refresh}>إعادة المحاولة</Button></div>}
-    <div className="hero-strip"><div><div className="hero-label">مساحة العمل المحلية</div><h2>جودة القهوة تبدأ<br/>من التفاصيل الصغيرة.</h2><p>سجّل الملاحظة، وثّقها، وتابعها حتى الإغلاق.</p><Link href="/inspection/new" className="text-link">ابدأ جولة جديدة <ArrowLeft size={16}/></Link></div><div className="hero-illustration"><span className="orbit orbit-one"/><span className="orbit orbit-two"/><span className="hero-cup"><Coffee size={50}/></span><span className="hero-spark">R</span></div></div>
+    <div className="hero-strip"><div><div className="hero-label">ريشيو · إدارة الجودة</div><h2>الجودة تبدأ<br/>من التفاصيل الصغيرة.</h2><p>سجّل الملاحظة، وثّقها، وتابعها حتى الإغلاق.</p><Link href="/inspection/new" className="text-link">ابدأ جولة جديدة <ArrowLeft size={16}/></Link></div></div>
     <div className="metric-grid">
       <Card className="metric-card"><span className="metric-icon"><ClipboardCheck size={18}/></span><small>زيارات مكتملة</small><strong data-testid="metric-completed">{finished.length}</strong><span className="metric-caption">محفوظة على هذا الجهاز</span></Card>
       <Card className="metric-card"><span className="metric-icon green"><Gauge size={18}/></span><small>متوسط الالتزام</small><strong>{average}{average !== '—' && <em>%</em>}</strong><span className="metric-caption">من الزيارات المكتملة</span></Card>
@@ -198,6 +210,21 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
     </article></div>;
 }
 
+const normAr = (v: string) => v.toLowerCase().replace(/[\u064B-\u0652]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+function BranchPicker({ branches, value, onChange }: { branches: Branch[]; value: string; onChange: (id: string) => void }) {
+  const [q, setQ] = useState('');
+  const selected = branches.find(b => b.id === value);
+  const list = useMemo(() => {
+    const n = normAr(q.trim());
+    return branches.filter(b => !n || normAr(b.name).includes(n) || (b.code ?? '').toLowerCase().includes(n)).slice(0, 80);
+  }, [q, branches]);
+  if (selected) return <div className="branch-selected" data-testid="branch-selected"><div><b>{selected.name}</b>{selected.code && <span className="branch-code">{selected.code}</span>}</div><button type="button" onClick={() => { onChange(''); setQ(''); }}>تغيير</button></div>;
+  return <div className="branch-picker">
+    <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
+    <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(b => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span>{b.code && <span className="branch-code">{b.code}</span>}</button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div>
+  </div>;
+}
+
 function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, setLocation] = useLocation();
   const [questions, setQuestions] = useState<Question[]>(QUESTIONS);
@@ -208,6 +235,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const branchId = form.watch('branchId');
   const type = form.watch('type');
   const [error, setError] = useState('');
+  useEffect(() => { form.register('branchId'); }, [form]);
   useEffect(() => { loadQuestions().then(setQuestions).catch(() => setQuestions(QUESTIONS)); }, []);
   const activeBranches = data.branches.filter(b => !b.archived);
   const start = async (values: InspectionStartValues) => {
@@ -236,13 +264,13 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   };
   return <div className="page-content narrow-page"><Link href="/" className="back-link"><ArrowRight size={16}/> الرئيسية</Link><PageTitle eyebrow="زيارة جديدة" title="بيانات الجولة" detail="سجّل تفاصيل الزيارة قبل بدء الفحص. ستُحفظ المسودة تلقائياً على هذا الجهاز."/>
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(start)}><div className="form-grid">
-      <label className="field wide"><span>الفرع <em>*</em></span><select {...form.register('branchId')} data-testid="select-branch"><option value="">اختر الفرع</option>{activeBranches.map(b => <option key={b.id} value={b.id}>{b.name}{b.demo ? ' · فرع مثال' : ''}</option>)}</select>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}</label>
+      <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}</div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
       <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" {...form.register('date')} data-testid="input-inspection-date"/></label>
       <label className="field"><span>الفترة</span><select {...form.register('shift')} data-testid="select-shift"><option>صباحية</option><option>مسائية</option></select></label>
       <label className="field"><span>عدد الموظفين</span><input type="number" min="0" {...form.register('employees', { valueAsNumber: true })} data-testid="input-employees"/>{form.formState.errors.employees && <small className="form-error">{form.formState.errors.employees.message}</small>}</label>
-    </div>{error && <div className="form-error">{error}</div>}<div className="form-note"><Info size={17}/><span>البيانات لا تغادر هذا الجهاز. لا يوجد نسخ احتياطي سحابي أو مزامنة بين الأجهزة.</span></div><Button type="submit" className="full-button" data-testid="button-create-inspection">حفظ وبدء الفحص <ArrowLeft size={17}/></Button></form></Form>
+    </div>{error && <div className="form-error">{error}</div>}<div className="form-note"><Info size={17}/><span>{cloudEnabled ? 'تُحفظ المسودة تلقائياً على جهازك وتُزامن مع حسابك عند توفر الإنترنت.' : 'البيانات لا تغادر هذا الجهاز. لا يوجد نسخ احتياطي سحابي أو مزامنة بين الأجهزة.'}</span></div><Button type="submit" className="full-button" data-testid="button-create-inspection">حفظ وبدء الفحص <ArrowLeft size={17}/></Button></form></Form>
   </div>;
 }
 

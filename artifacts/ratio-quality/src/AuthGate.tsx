@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { cloudEnabled, signIn, signOutUser, watchUser } from './cloud';
+import { cloudEnabled, signIn, watchUser } from './cloud';
 import { syncAll } from './data';
 
 /** When Firebase is configured, requires sign-in and runs a sync before the app mounts. Otherwise a no-op. */
@@ -20,8 +20,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  if (state === 'in') return <>{cloudEnabled && <button onClick={() => signOutUser()} style={{ position: 'fixed', top: 6, left: 6, zIndex: 50, fontSize: 11, opacity: .6, background: 'none', border: 0 }}>تسجيل الخروج</button>}{children}</>;
-  if (state === 'loading' || state === 'syncing') return <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center' }} dir="rtl">{state === 'syncing' ? 'جاري مزامنة البيانات…' : 'جاري التحميل…'}</div>;
+  if (state === 'in') return <>{children}</>;
+  if (state === 'loading' || state === 'syncing') return <div className="splash" dir="rtl"><img src="/brand/mark-white.png" alt=""/><span>{state === 'syncing' ? 'جاري مزامنة البيانات…' : 'جاري التحميل…'}</span></div>;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
@@ -29,13 +29,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
     catch { setError('تعذر تسجيل الدخول. تأكد من البريد وكلمة المرور والاتصال بالإنترنت.'); }
     finally { setBusy(false); }
   };
-  return <div dir="rtl" style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: 16 }}>
-    <form onSubmit={submit} className="surface-card" style={{ width: '100%', maxWidth: 380, padding: 24, display: 'grid', gap: 14 }}>
-      <h1 style={{ margin: 0, fontSize: 22 }}>ريشيو للجودة</h1>
-      <label className="field"><span>البريد الإلكتروني</span><input className="typed-input" type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required dir="ltr"/></label>
-      <label className="field"><span>كلمة المرور</span><input className="typed-input" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required dir="ltr"/></label>
-      {error && <p role="alert" style={{ color: '#b3261e', margin: 0 }}>{error}</p>}
+  return <div dir="rtl" className="login-screen">
+    <form onSubmit={submit} className="login-card">
+      <img className="login-logo" src="/brand/logo-ar-navy.png" alt="ريشيو"/>
+      <h1>منصة إدارة الجودة</h1>
+      <p className="sub">سجّل دخولك للمتابعة</p>
+      <label className="field"><span>البريد الإلكتروني</span><input type="email" autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} required dir="ltr" inputMode="email"/></label>
+      <label className="field"><span>كلمة المرور</span><input type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required dir="ltr"/></label>
+      {error && <p role="alert" className="err">{error}</p>}
       <button className="button button-primary" type="submit" disabled={busy}>{busy ? 'جاري الدخول…' : 'دخول'}</button>
+      <p className="hint">الحسابات تُنشأ بدعوة من مدير النظام.</p>
     </form>
   </div>;
 }
