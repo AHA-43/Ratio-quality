@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -13,14 +13,15 @@ import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, Check
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
-import { allocateInspectionNumber, audit, useProfile, workflowLabel } from './session';
+import { allocateInspectionNumber, audit, canApprove, useProfile, workflowLabel } from './session';
 import { ExportBar } from './features/ExportBar';
-import { ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
+import { isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
 import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'صباح الخير' : h < 17 ? 'مساء الخير' : 'مساء النور'; };
 const nav = [
   { href: '/', label: 'الرئيسية', icon: LayoutDashboard },
   { href: '/visits', label: 'الزيارات', icon: ClipboardCheck },
@@ -131,10 +132,25 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const openActions = data.actions.filter(a => a.status !== 'مغلق');
   const scores = finished.map(i => calculateScore(i.questionSnapshot, i.answers).score).filter((x): x is number => x !== null);
   const average = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1) : '—';
+  const profile = useProfile();
+  const approver = canApprove(profile);
+  const latestDraft = [...drafts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+  const draftPct = latestDraft ? Math.round(Object.values(latestDraft.answers).filter(a => a.value != null).length / Math.max(1, latestDraft.questionSnapshot.length) * 100) : 0;
+  const overdue = data.actions.filter(isOverdue).length;
+  const awaiting = finished.filter(i => i.workflow === 'submitted').length;
+  const returned = drafts.filter(i => i.workflow === 'returned').length;
   return <div className="page-content">
-    <PageTitle eyebrow="لوحة الجودة · اليوم" title="صباح الجودة" detail="متابعة الزيارات والإجراءات من نقطة العمل." action={<Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> بدء زيارة</Link>}/>
+    <div className="today">
+      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link></div>
+      {latestDraft ? <Link href={`/inspection/${latestDraft.id}`} className="continue-card"><span className="ring" style={{ ['--p' as string]: draftPct }}><b>{draftPct}%</b></span><span><small>{latestDraft.workflow === 'returned' ? 'أُعيدت للتصحيح' : 'زيارة لم تكتمل'}</small><h2>{latestDraft.branchName}</h2><span className="cta">أكمل من حيث توقفت ←</span></span></Link>
+        : <Link href="/inspection/new" className="continue-card"><span className="ring" style={{ ['--p' as string]: 0 }}><b>+</b></span><span><small>لا توجد زيارة مفتوحة</small><h2>ابدأ زيارة جودة</h2><span className="cta">اختر الفرع وابدأ الفحص ←</span></span></Link>}
+      <div className="attention">
+        {overdue > 0 && <Link href="/actions" className="red"><span>إجراءات تصحيحية متأخرة</span><b>{overdue}</b></Link>}
+        {awaiting > 0 && <Link href="/reports" className="blue"><span>{approver ? 'تقارير بانتظار اعتمادك' : 'تقارير بانتظار الاعتماد'}</span><b>{awaiting}</b></Link>}
+        {returned > 0 && <Link href="/visits" className="amber"><span>زيارات أُعيدت للتصحيح</span><b>{returned}</b></Link>}
+      </div>
+    </div>
     {data.error && <div className="alert alert-danger">{data.error}<Button variant="outline" onClick={data.refresh}>إعادة المحاولة</Button></div>}
-    <div className="hero-strip"><div><div className="hero-label">ريشيو · إدارة الجودة</div><h2>الجودة تبدأ<br/>من التفاصيل الصغيرة.</h2><p>سجّل الملاحظة، وثّقها، وتابعها حتى الإغلاق.</p><Link href="/inspection/new" className="text-link">ابدأ جولة جديدة <ArrowLeft size={16}/></Link></div></div>
     <div className="metric-grid">
       <Card className="metric-card"><span className="metric-icon"><ClipboardCheck size={18}/></span><small>زيارات مكتملة</small><strong data-testid="metric-completed">{finished.length}</strong><span className="metric-caption">محفوظة على هذا الجهاز</span></Card>
       <Card className="metric-card"><span className="metric-icon green"><Gauge size={18}/></span><small>متوسط الالتزام</small><strong>{average}{average !== '—' && <em>%</em>}</strong><span className="metric-caption">من الزيارات المكتملة</span></Card>
@@ -295,6 +311,9 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [responsible, setResponsible] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saved, setSaved] = useState(true);
+  const [autoAdvance, setAutoAdvance] = useState(() => { try { return localStorage.getItem('rq-auto') !== 'off'; } catch { return true; } });
+  const [toast, setToast] = useState<{ text: string; back: number } | null>(null);
+  const touch = useRef<{ x: number; y: number } | null>(null);
   const [signatures, setSignatures] = useState<NonNullable<Inspection['signatures']>>(inspection?.signatures || {});
   const prev = useMemo(() => inspection ? previousInspection(data.inspections, inspection.branchId, inspection.id) : undefined, [data.inspections, inspection?.id]);
   const questions = inspection?.questionSnapshot || QUESTIONS;
@@ -302,6 +321,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const answer = defaultAnswer(q ? answers[q.id] : undefined);
   const score = useMemo(() => calculateScore(questions, answers), [questions, answers]);
   useEffect(() => { if (inspection) setAnswers(inspection.answers); }, [inspection?.id]);
+  useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(t); }, [toast]);
   useEffect(() => { if (inspection?.status === 'finalized') setLocation(`/reports/${inspection.id}`); }, [inspection?.id, inspection?.status, setLocation]);
   useEffect(() => {
     if (!inspection || inspection.status !== 'draft') return;
@@ -319,6 +339,33 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     if (patch.value === 'fail' && previous.initialValue !== 'fail') next.initialValue = 'fail';
     return { ...old, [questionId]: next };
   });
+  const goNext = () => {
+    if (answer.value === null) { setMessage('اختر نتيجة السؤال قبل المتابعة.'); return false; }
+    if (answer.value === 'fail' && !answer.observation.trim()) { setMessage('أضف وصف الملاحظة قبل الانتقال.'); return false; }
+    if (index < questions.length - 1) { setIndex(index + 1); setMessage(''); } else setReview(true);
+    return true;
+  };
+  const choose = (value: 'pass' | 'fail' | 'na') => {
+    update({ value, severity: q.severity }); setMessage('');
+    try { navigator.vibrate?.(value === 'fail' ? [18, 40, 18] : 12); } catch { /* unsupported */ }
+    if (value !== 'fail' && autoAdvance && inspection.status === 'draft') {
+      const from = index;
+      window.setTimeout(() => {
+        setIndex(cur => cur === from ? Math.min(from + 1, questions.length - 1) : cur);
+        if (from === questions.length - 1) setReview(true);
+        setToast({ text: `${value === 'pass' ? '✓ مطابق' : '— لا ينطبق'} · البند ${q.id}`, back: from });
+      }, 320);
+    }
+  };
+  const onTouchStart = (e: React.TouchEvent) => { const t = e.target as HTMLElement; if (t.closest('textarea,input,canvas,select,.heat-strip')) { touch.current = null; return; } touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touch.current) return;
+    const dx = e.changedTouches[0].clientX - touch.current.x, dy = e.changedTouches[0].clientY - touch.current.y; touch.current = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > 60) return;
+    if (dx < 0) goNext(); else if (index > 0) { setIndex(index - 1); setMessage(''); }
+  };
+  const answeredQs = questions.filter(x => answers[x.id]?.value != null);
+  const liveScore = calculateScore(answeredQs, answers);
   const failMissing = questions.filter(item => answers[item.id]?.value === 'fail' && !answers[item.id]?.observation.trim());
   const canFinalize = score.score !== null && failMissing.length === 0 && signaturesComplete(signatures);
   const finalize = async () => {
@@ -369,8 +416,14 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><div className={`score-ring ${score.classification === 'غير مقبول' ? 'score-bad' : ''}`}><b>{score.score === null ? '—' : `${score.score}%`}</b><small>{score.classification || 'غير مكتمل'}</small></div><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div><SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>{!isFinal && <Button className="full-button" disabled={!canFinalize} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> إرسال للاعتماد</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>
        <div className="review-sections">{sectionGroups.map(section => <Card key={section} className="review-section-card"><div className="card-heading"><h3>{section}</h3><span>{questions.filter(x => x.section === section).filter(x => answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail').length} ملاحظة</span></div>{questions.filter(x => x.section === section).map(item => { const a = defaultAnswer(answers[item.id]); const failedInitially = a.value === 'fail' || a.initialValue === 'fail'; return <button className="review-question" key={item.id} disabled={isFinal} onClick={() => { setIndex(questions.findIndex(x => x.id === item.id)); setReview(false); }}><span className={`finding-mark ${failedInitially ? 'failed' : a.value === 'na' ? 'na' : a.value === 'pass' ? 'passed' : 'empty'}`}>{failedInitially ? '!' : a.value === 'pass' ? '✓' : a.value === 'na' ? '—' : '·'}</span><span>{item.id}. {item.title}</span><ChevronLeft size={15}/></button>; })}</Card>)}</div></div> :
     <div className="inspection-layout"><aside className="section-sidebar"><span className="eyebrow">أقسام الفحص</span>{sectionGroups.map((section, sIndex) => <button key={section} className={`section-jump ${q?.section === section ? 'current' : ''}`} onClick={() => setIndex(questions.findIndex(item => item.section === section))} data-testid={`jump-section-${sIndex}`}><span className="section-number">{String(sIndex + 1).padStart(2, '0')}</span><span>{section}</span><small>{questions.filter(x => x.section === section && answers[x.id]?.value != null).length}/{questions.filter(x => x.section === section).length}</small></button>)}<button className="review-link" onClick={() => setReview(true)}><FileCheck2 size={16}/> مراجعة الزيارة</button></aside>
-    <div className="question-column"><div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length}</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><p className="criteria">{q.criterion} <span>معيار أولي قابل للتعديل</span></p>
-      {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(قابل للتعديل)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · النطاق يحتاج اعتماداً داخلياً</div>}</div>; })()}
+    <div className="question-column" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+      <div className="field-hud">
+        <div className="hud-score"><small>النتيجة حتى الآن</small><b>{liveScore.score === null ? '—' : `${liveScore.score}%`}</b>{liveScore.criticalFailures > 0 && <em>إخفاق حرج</em>}</div>
+        <button type="button" className={`hud-auto ${autoAdvance ? 'on' : ''}`} onClick={() => { const v = !autoAdvance; setAutoAdvance(v); try { localStorage.setItem('rq-auto', v ? 'on' : 'off'); } catch { /* ignore */ } }} aria-pressed={autoAdvance}>{autoAdvance ? 'انتقال تلقائي ✓' : 'انتقال تلقائي'}</button>
+      </div>
+      <div className="heat-strip" aria-label="خريطة الزيارة">{sectionGroups.map(section => <div className="heat-group" key={section} title={section}>{questions.filter(x => x.section === section).map(x => { const v = answers[x.id]?.value; return <button type="button" key={x.id} aria-label={`البند ${x.id}`} onClick={() => { setIndex(questions.findIndex(y => y.id === x.id)); setMessage(''); }} className={`heat ${v === 'pass' ? 'p' : v === 'fail' ? 'f' : v === 'na' ? 'n' : ''} ${x.id === q.id ? 'cur' : ''} ${x.severity === 'Critical' ? 'crit' : ''}`}/>; })}</div>)}</div>
+      <div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length} · اسحب للتنقل</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><div className={`sev-line ${q.severity.toLowerCase()}`}><span>{q.severity === 'Critical' ? 'حرج' : q.severity === 'Major' ? 'رئيسي' : 'ثانوي'}</span>وزن {WEIGHTS[q.severity]} · التصحيح خلال {q.severity === 'Critical' ? '24 ساعة' : q.severity === 'Major' ? '72 ساعة' : '7 أيام'}{q.severity === 'Critical' && <b> · الإخفاق يجعل الزيارة غير مقبولة</b>}</div>
+      {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(وفق نموذج الفحص)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · النطاق يحتاج اعتماداً داخلياً</div>}</div>; })()}
       {q.inputType && q.inputType !== 'status' && <div className="typed-response"><div className="answer-label">قراءة إضافية <small>اختياري</small></div>{q.inputType === 'numeric' && !q.measurement && <input className="typed-input" type="number" inputMode="decimal" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} placeholder="أدخل القراءة" data-testid={`input-numeric-${q.id}`}/>}
         {q.inputType === 'text' && <textarea className="typed-input typed-text" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} placeholder="اكتب التفاصيل…" data-testid={`input-text-${q.id}`}/>}
         {q.inputType === 'single-choice' && <select className="typed-input" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} data-testid={`input-choice-${q.id}`}><option value="">اختر إجابة</option>{(q.options?.length ? q.options : ['خيار ١','خيار ٢','خيار ٣']).map(o => <option key={o}>{o}</option>)}</select>}
@@ -380,9 +433,9 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         {q.inputType === 'photo' && <p className="typed-help">أرفق صورة من قسم الأدلة أدناه.</p>}
       </div>}
       <div className="answer-label">نتيجة الفحص <em>*</em></div><div className="answer-options">
-        {[['pass','مطابق','مطابق للمعيار',Check],['fail','غير مطابق','يتطلب متابعة',X],['na','لا ينطبق','يُستبعد من النتيجة',CircleHelp]].map(([value,label,sub,Icon]) => <button type="button" key={value as string} onClick={() => { update({ value: value as string, severity: q.severity }); setMessage(''); }} className={`answer-option ${answer.value === value ? `chosen ${value}` : ''}`} data-testid={`answer-${value}-${q.id}`}><span className="choice-icon"><Icon size={18}/></span><b>{label as string}</b><small>{sub as string}</small></button>)}
+        {[['pass','مطابق','مطابق للمعيار',Check],['fail','غير مطابق','يتطلب متابعة',X],['na','لا ينطبق','يُستبعد من النتيجة',CircleHelp]].map(([value,label,sub,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`answer-option ${answer.value === value ? `chosen ${value}` : ''}`} data-testid={`answer-${value}-${q.id}`}><span className="choice-icon"><Icon size={18}/></span><b>{label as string}</b><small>{sub as string}</small></button>)}
       </div>
-      <RecurringHint prev={prev} questionId={q.id} answer={answer} onConfirm={v => update({ recurring: v })}/>{TASTING_SCORE_IDS.includes(q.id) && <TastingScores value={answer.tasting} onChange={t => update({ tasting: t })}/>}{answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="صف ما تمت ملاحظته بوضوح…" data-testid={`input-observation-${q.id}`}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={q.severity} disabled title="الخطورة محددة في قائمة الفحص المعتمدة" data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة</span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
+      <RecurringHint prev={prev} questionId={q.id} answer={answer} onConfirm={v => update({ recurring: v })}/>{TASTING_SCORE_IDS.includes(q.id) && <TastingScores value={answer.tasting} onChange={t => update({ tasting: t })}/>}{answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em></span><textarea autoFocus value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="ماذا رأيت؟ وأين؟ ما أثره على العميل أو الجودة؟" data-testid={`input-observation-${q.id}`}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={q.severity} disabled title="الخطورة محددة في قائمة الفحص المعتمدة" data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة</span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
       {answer.value === 'na' && <label className="field na-reason"><span>سبب عدم الانطباق <small>اختياري</small></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="اكتب سبب استبعاد هذا السؤال من الزيارة…"/></label>}
       {answer.initialValue === 'fail' && answer.value === 'pass' && <div className="correction-record"><label className="recurring-toggle"><input type="checkbox" checked={Boolean(answer.correctedDuringVisit)} onChange={e => update({ correctedDuringVisit: e.target.checked })} data-testid={`toggle-corrected-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>تم تصحيح الملاحظة خلال الزيارة</span></label>{answer.correctedDuringVisit && <label className="field"><span>تفاصيل التصحيح <small>اختياري</small></span><textarea value={answer.correctionNote || ''} onChange={e => update({ correctionNote: e.target.value })} placeholder="ما الذي تم تصحيحه؟"/></label>}</div>}
       <div className="evidence-block">
@@ -390,8 +443,8 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو غير مدعوم.</p>
         {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}><img src={img.data} alt={img.caption || img.name}/><button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button><input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
-      </Card><div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => { if (answer.value === null) { setMessage('اختر نتيجة السؤال قبل المتابعة.'); return; } if (answer.value === 'fail' && !answer.observation.trim()) { setMessage('أضف وصف الملاحظة قبل الانتقال.'); return; } setIndex(index + 1); setMessage(''); }} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div></div></div>}
-    <div className="provisional-note"><Info size={15}/> معايير وعتبات الفحص الحالية أولية وقابلة للتعديل؛ لا تمثل معايير رسمية معتمدة.</div>
+      </Card><div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div></div></div>}
+    {toast && <div className="field-toast" role="status"><span>{toast.text}</span><button onClick={() => { setIndex(toast.back); setToast(null); }}>تراجع</button></div>}
   </div>;
 }
 

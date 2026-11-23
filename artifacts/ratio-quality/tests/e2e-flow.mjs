@@ -12,6 +12,7 @@ const errors = []; p.on('pageerror', e => errors.push(e.message));
 const signIn = async (sel) => { const c = p.locator(sel); await c.scrollIntoViewIfNeeded(); await p.evaluate(() => window.scrollBy(0, 120)); const box = await c.boundingBox(); await p.mouse.move(box.x + 20, box.y + 40); await p.mouse.down(); await p.mouse.move(box.x + 120, box.y + 90, { steps: 8 }); await p.mouse.move(box.x + 200, box.y + 50, { steps: 8 }); await p.mouse.up(); };
 
 await p.goto(base + '/'); await p.waitForTimeout(1500);
+await p.screenshot({ path: `${out}/e2e-home0.png` });
 await p.getByTestId('button-start-inspection').click();
 await p.getByTestId('input-branch-search').fill('HAS.01');
 await p.locator('.branch-option').first().click();
@@ -22,9 +23,11 @@ for (let id = 1; id <= 46; id++) {
   if (id === 5) { await p.getByTestId(`answer-fail-${id}`).click(); await p.getByTestId(`input-observation-${id}`).fill('عصا التبخير غير نظيفة بعد الاستخدام'); }
   else await p.getByTestId(`answer-pass-${id}`).click();
   if (id === 27) assert.equal(await p.locator('.tasting-box').count(), 1, 'tasting scores shown for Q27');
-  if (id < 46) await p.getByTestId('button-next-question').click();
+  if (id === 5) await p.getByTestId('button-next-question').click();
+  if (id === 1) await p.screenshot({ path: `${out}/e2e-runner.png` });
 }
-await p.getByTestId('button-review').click();
+await p.waitForTimeout(700);
+if (!(await p.getByTestId('button-finalize').count())) await p.getByTestId('button-review').click();
 await p.waitForTimeout(400);
 assert.equal(await p.getByTestId('button-finalize').isDisabled(), true, 'submit blocked until signatures');
 await signIn('.sig-pad canvas >> nth=0');
@@ -50,6 +53,7 @@ const [pptx] = await Promise.all([p.waitForEvent('download', { timeout: 60000 })
 await xlsx.saveAs(`${out}/${xlsx.suggestedFilename()}`); await pptx.saveAs(`${out}/${pptx.suggestedFilename()}`);
 console.log('downloads:', xlsx.suggestedFilename(), pptx.suggestedFilename());
 await p.screenshot({ path: `${out}/e2e-approved.png` });
+await p.goto(base + '/'); await p.waitForTimeout(800); await p.screenshot({ path: `${out}/e2e-home.png` });
 await p.goto(base + '/actions'); await p.waitForTimeout(500);
 await p.goto(base + '/analytics'); await p.waitForTimeout(800);
 assert.match(await p.locator('main').innerText(), /لوحة الأداء/);
