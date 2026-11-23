@@ -40,6 +40,7 @@ async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDo
     const atts: Att[] = [];
     for (const a of (ans.attachments ?? []) as Att[]) {
       let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);
+      if (String(a.type ?? '').startsWith('video/')) { atts.push({ ...a, data: '', storagePath: 'device-only' }); continue; }
       if (!ref && a.data?.startsWith('data:') && a.data.length < 1_000_000) {
         try {
           await setDoc(doc(fs!, 'photos', a.id), { inspectionId: value.id, questionId: Number(qid), data: a.data, uid: auth!.currentUser!.uid, at: new Date().toISOString() });
@@ -78,7 +79,7 @@ export async function pullAll(store: string): Promise<AnyDoc[]> {
     const v = d.data() as AnyDoc;
     if (store === 'inspections' && v.answers) {
       for (const ans of Object.values<any>(v.answers)) {
-        for (const a of ans.attachments ?? []) if (a.storagePath && !a.data) a.data = await resolvePhoto(a.storagePath).catch(() => '');
+        for (const a of ans.attachments ?? []) if (a.storagePath && a.storagePath !== 'device-only' && !a.data) a.data = await resolvePhoto(a.storagePath).catch(() => '');
       }
     }
     out.push(v);

@@ -55,8 +55,9 @@ export function ActionsBoard({ data }: { data: AppData }) {
 export function AnalyticsPage({ data }: { data: AppData }) {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('');
   const [branch, setBranch] = useState(''); const [section, setSection] = useState(''); const [sev, setSev] = useState(''); const [inspector, setInspector] = useState('');
-  const comparable = data.inspections.filter(i => i.status === 'finalized' && i.checklistVersion === 'official-pdf-v1');
-  const legacy = data.inspections.filter(i => i.status === 'finalized' && i.checklistVersion !== 'official-pdf-v1').length;
+  const superseded = new Set(data.inspections.filter(i => i.amendmentOf && i.workflow === 'approved').map(i => i.amendmentOf!));
+  const comparable = data.inspections.filter(i => i.status === 'finalized' && (i.checklistVersion ?? '').startsWith('official-pdf-v1') && !superseded.has(i.id));
+  const legacy = data.inspections.filter(i => i.status === 'finalized' && !(i.checklistVersion ?? '').startsWith('official-pdf-v1')).length;
   const rows = comparable.filter(i => (!from || i.date >= from) && (!to || i.date.slice(0, 10) <= to) && (!branch || i.branchId === branch) && (!inspector || i.inspector === inspector));
   const scored = rows.map(i => ({ i, s: calculateScore(i.questionSnapshot, i.answers) }));
   const avg = scored.filter(x => x.s.score !== null).reduce((a, x, _, arr) => a + x.s.score! / arr.length, 0);

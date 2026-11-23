@@ -41,6 +41,8 @@ export type Inspection = {
     branch?: { name: string; image?: string; at: string; declinedReason?: string };
   };
   previous?: { inspectionId: string; date: string; score: number | null; classification: string | null };
+  /** Documented correction of an approved report: a new revision linked to the locked original. */
+  amendmentOf?: string; amendmentReason?: string; revision?: number;
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
@@ -123,6 +125,14 @@ export async function remove(store: StoreName, id: string) {
   if (cloudEnabled && isSignedIn()) removeDoc(store, id).catch(() => {});
 }
 /** After sign-in: bring down anything missing/newer from the cloud, then push local-only items up. */
+/** Cloud copies carry photo references, never device-only videos: keep any media this device already has. */
+function keepLocalMedia(local: Inspection, cloud: Inspection) {
+  for (const [qid, ans] of Object.entries(cloud.answers ?? {})) {
+    const mine = local.answers?.[Number(qid)]?.attachments ?? [];
+    for (const a of ans.attachments ?? []) if (!a.data) { const m = mine.find(x => x.id === a.id); if (m?.data) a.data = m.data; }
+    for (const m of mine) if (m.type.startsWith('video/') && !(ans.attachments ?? []).some(a => a.id === m.id)) (ans.attachments ??= []).push(m);
+  }
+}
 export async function syncAll() {
   if (!cloudEnabled || !isSignedIn()) return;
   for (const store of ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const) {
@@ -134,7 +144,10 @@ export async function syncAll() {
     const cloudIds = new Set(cloud.map(x => x.id));
     for (const c of cloud) {
       const l = localById.get(c.id);
-      if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) await localRepository.put(store, c as never);
+      if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
+        if (l && store === 'inspections') keepLocalMedia(l as unknown as Inspection, c as unknown as Inspection);
+        await localRepository.put(store, c as never);
+      }
     }
     for (const l of local) {
       const c = cloud.find(x => x.id === l.id);
