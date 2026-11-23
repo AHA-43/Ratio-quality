@@ -8,7 +8,7 @@ const FS = 'http://127.0.0.1:8080/v1/projects/demo-ratio/databases/(default)/doc
 const AUTH = 'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1';
 const admin = { Authorization: 'Bearer owner', 'Content-Type': 'application/json' };
 const results = [];
-const step = async (name, fn) => { console.log('… ' + name); try { await fn(); results.push(['PASS', name]); console.log('PASS ' + name); } catch (e) { results.push(['FAIL', name, String(e.message).slice(0, 300)]); throw e; } };
+const step = async (name, fn) => { console.log('… ' + name); try { await Promise.race([fn(), new Promise((_, r) => setTimeout(() => r(new Error('step timeout 90s')), 90000))]); results.push(['PASS', name]); console.log('PASS ' + name); } catch (e) { results.push(['FAIL', name, String(e.message).slice(0, 300)]); throw e; } };
 
 async function signUp(email) {
   const r = await fetch(`${AUTH}/accounts:signUp?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password: 'Test-pass-123', returnSecureToken: true }) });
@@ -65,8 +65,10 @@ await step('answer 46 items (auto-advance), one critical failure with a photo', 
   await A.p.waitForTimeout(800);
 });
 await step('photo compressed below 600 KB', async () => {
-  const src = await A.p.evaluate(async id => { const req = indexedDB.open('ratio-quality-local-v1'); const db = await new Promise(r => { req.onsuccess = () => r(req.result); }); const tx = db.transaction('inspections'); const g = tx.objectStore('inspections').get(id); return await new Promise(r => { g.onsuccess = () => r(g.result.answers[5].attachments[0].data.length); }); }, inspectionId);
-  assert.ok(src < 600000, `photo is ${src} chars`);
+  await A.p.goto(APP + `/inspection/${inspectionId}`); await A.p.waitForTimeout(800);
+  await A.p.locator('.heat').nth(4).click(); await A.p.waitForSelector('.evidence-item img');
+  const len = (await A.p.locator('.evidence-item img').first().getAttribute('src'))?.length ?? 0;
+  assert.ok(len > 1000 && len < 600000, `photo is ${len} chars`);
 });
 await step('submit requires signatures; then gets sequential number RQ-YYYY-00001', async () => {
   if (!(await A.p.getByTestId('button-finalize').count())) await A.p.getByTestId('button-review').click();

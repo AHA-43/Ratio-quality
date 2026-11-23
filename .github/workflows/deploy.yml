@@ -109,19 +109,6 @@ jobs:
             -d '{"fields":{"role":{"stringValue":"admin"},"canApprove":{"booleanValue":true},"active":{"booleanValue":true}}}' >/dev/null
           echo "owner account set as admin"
           rm -f "$RUNNER_TEMP/sa.json"
-      - name: Firestore backups (daily, 14 weeks) and point-in-time recovery
-        continue-on-error: true
-        env:
-          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
-          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
-          gcloud config set project ratio-quality --quiet
-          if [ -z "$(gcloud firestore backups schedules list --database='(default)' --format='value(name)' 2>/dev/null)" ]; then
-            gcloud firestore backups schedules create --database='(default)' --recurrence=daily --retention=14w && echo "backup schedule created" || echo "BACKUP SCHEDULE NOT CREATED (permission?)"
-          else echo "backup schedule already exists"; fi
-          gcloud firestore databases update --database='(default)' --enable-pitr --quiet && echo "PITR enabled" || echo "PITR NOT ENABLED (permission?)"
-          rm -f "$RUNNER_TEMP/sa.json"
       - name: Live smoke test on the deployed site (temporary account, cleaned up)
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -133,7 +120,9 @@ jobs:
           EMAIL="ci-smoke-${GITHUB_RUN_ID}@example.com"; PW=$(openssl rand -base64 18)
           UID_=$(curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
             -d "$(jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p,emailVerified:true}')" | jq -r .localId)
-          cd artifacts/ratio-quality && npx playwright install --with-deps chromium >/dev/null 2>&1
+          npm i -g playwright@1 >/dev/null 2>&1 && npx playwright install --with-deps chromium >/dev/null 2>&1
+          export NODE_PATH=$(npm root -g)
+          cd artifacts/ratio-quality
           sleep 20
           APP_URL=https://ratio-quality.web.app EMAIL="$EMAIL" PASSWORD="$PW" TOKEN="$TOKEN" node tests/live-smoke.mjs | tee "$RUNNER_TEMP/smoke.txt"; RC=${PIPESTATUS[0]}
           # cleanup: everything created by the temporary account
