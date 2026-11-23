@@ -266,3 +266,12 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
   .question-card > .finding-fields, .question-card > .evidence-block, .question-card > .na-reason, .question-card > .correction-record, .question-card > .tasting-box, .question-card > .recurring-hint { grid-column: 2; }
   .question-card > .finding-fields { grid-row: 1 / span 6; margin-top: 0; }
 }
+/* report page */
+.print-cover { background: var(--navy) !important; color: #fff; }
+.print-cover .report-label { background: #ffffff1f !important; color: #fff !important; }
+.report-meta-grid span { color: #c9ccf4 !important; } .report-meta-grid b { color: #fff !important; }
+.report-actions { display: grid !important; grid-template-columns: auto 1fr; gap: 10px; align-items: start; margin-bottom: 14px; }
+.report-actions > a.button:last-child { grid-column: 1 / -1; }
+.report-actions .export-bar { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.report-actions .export-bar .button { width: 100%; min-height: 44px; }
+.report-actions .recip-select { grid-column: 1 / -1; width: 100%; }

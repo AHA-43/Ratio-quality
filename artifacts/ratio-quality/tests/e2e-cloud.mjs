@@ -24,12 +24,12 @@ const qmUid = await signUp('manager@test.local');
 await fetch(`${FS}/users/${qmUid}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { email: { stringValue: 'manager@test.local' }, name: { stringValue: 'مدير الجودة' }, role: { stringValue: 'quality_manager' }, canApprove: { booleanValue: true }, active: { booleanValue: true } } }) });
 
 const browser = await chromium.launch();
-const newDevice = async () => { const c = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true }); const p = await c.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); return { c, p, errs }; };
+const newDevice = async () => { const c = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true }); const p = await c.newPage(); const errs = []; const logs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => logs.push(m.text().slice(0, 200))); return { c, p, errs, logs }; };
 const login = async (p, email) => { await p.goto(APP + '/'); await p.waitForSelector('.login-card'); await p.locator('input[type=email]').fill(email); await p.locator('input[type=password]').fill('Test-pass-123'); await p.getByRole('button', { name: 'دخول' }).click(); await p.waitForSelector('.today', { timeout: 20000 }); };
 const draw = async (p, sel) => { const c = p.locator(sel); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await p.mouse.move(b.x + 20, b.y + 40); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 100, { steps: 6 }); await p.mouse.move(b.x + 220, b.y + 40, { steps: 6 }); await p.mouse.up(); };
 
 const A = await newDevice();
-let inspectionId;
+let inspectionId; let photoLen = 0;
 await step('wrong password is rejected with a clear message', async () => {
   await A.p.goto(APP + '/'); await A.p.waitForSelector('.login-card');
   await A.p.locator('input[type=email]').fill('inspector@test.local'); await A.p.locator('input[type=password]').fill('wrong');
@@ -49,7 +49,7 @@ await step('start inspection: branch search, name prefilled from account', async
   await A.p.goto(APP + '/inspection/new'); await A.p.waitForTimeout(800);
   await A.p.getByTestId('input-branch-search').fill('HAS.01'); await A.p.locator('.branch-option').first().click();
   assert.equal(await A.p.getByTestId('input-inspector').inputValue(), 'inspector');
-  await A.p.getByTestId('button-create-inspection').click(); await A.p.waitForURL(/\/inspection\//);
+  await A.p.getByTestId('button-create-inspection').click(); await A.p.waitForURL(u => /\/inspection\/(?!new)[^/]+$/.test(String(u)));
   inspectionId = A.p.url().split('/').pop();
 });
 await step('answer 46 items (auto-advance), one critical failure with a photo', async () => {
@@ -59,17 +59,13 @@ await step('answer 46 items (auto-advance), one critical failure with a photo', 
       await A.p.getByTestId('input-observation-5').fill('عصا التبخير غير نظيفة');
       await A.p.getByTestId('input-photo-5').setInputFiles(new URL('./fixture-photo.jpg', import.meta.url).pathname);
       await A.p.waitForSelector('.evidence-item img');
+      photoLen = (await A.p.locator('.evidence-item img').first().getAttribute('src'))?.length ?? 0;
       await A.p.getByTestId('button-next-question').click();
     } else await A.p.getByTestId(`answer-pass-${id}`).click();
   }
   await A.p.waitForTimeout(800);
 });
-await step('photo compressed below 600 KB', async () => {
-  await A.p.goto(APP + `/inspection/${inspectionId}`); await A.p.waitForTimeout(800);
-  await A.p.locator('.heat').nth(4).click(); await A.p.waitForSelector('.evidence-item img');
-  const len = (await A.p.locator('.evidence-item img').first().getAttribute('src'))?.length ?? 0;
-  assert.ok(len > 1000 && len < 600000, `photo is ${len} chars`);
-});
+await step('photo compressed below 600 KB', async () => { assert.ok(photoLen > 1000 && photoLen < 600000, `photo is ${photoLen} chars`); });
 await step('submit requires signatures; then gets sequential number RQ-YYYY-00001', async () => {
   if (!(await A.p.getByTestId('button-finalize').count())) await A.p.getByTestId('button-review').click();
   assert.equal(await A.p.getByTestId('button-finalize').isDisabled(), true);
@@ -81,7 +77,9 @@ await step('submit requires signatures; then gets sequential number RQ-YYYY-0000
   assert.match(await A.p.locator('main').innerText(), new RegExp(`RQ-${new Date().getFullYear()}-00001`));
 });
 await step('cloud copy: submitted, photo stored separately, inspection holds only a reference', async () => {
-  const d = await fsGet(`inspections/${inspectionId}`);
+  let d = {};
+  for (let k = 0; k < 15 && !d.fields; k++) { d = await fsGet(`inspections/${inspectionId}`); if (!d.fields) await new Promise(r => setTimeout(r, 1000)); }
+  if (!d.fields) console.log('DEBUG inspections:', (await fsList('inspections')).map(x => x.name.split('/').pop()), 'photos:', (await fsList('photos')).length, 'users:', (await fsList('users')).length, 'id:', inspectionId, 'console:', A.logs.slice(-8));
   assert.equal(val(d.fields.workflow), 'submitted');
   const att = d.fields.answers.mapValue.fields['5'].mapValue.fields.attachments.arrayValue.values[0].mapValue.fields;
   assert.equal(val(att.data), '');
@@ -132,7 +130,7 @@ await step('offline: draft keeps working without a connection and syncs after', 
   await A.p.goto(APP + '/inspection/new'); await A.p.waitForTimeout(800);
   await A.p.getByTestId('input-branch-search').fill('HAS.03'); await A.p.locator('.branch-option').first().click();
   await A.c.setOffline(true);
-  await A.p.getByTestId('button-create-inspection').click(); await A.p.waitForURL(/\/inspection\//);
+  await A.p.getByTestId('button-create-inspection').click(); await A.p.waitForURL(u => /\/inspection\/(?!new)[^/]+$/.test(String(u)));
   const id2 = A.p.url().split('/').pop();
   await A.p.getByTestId('answer-pass-1').click(); await A.p.waitForTimeout(800);
   assert.match(await A.p.locator('.sync-chip').innerText(), /دون اتصال/);

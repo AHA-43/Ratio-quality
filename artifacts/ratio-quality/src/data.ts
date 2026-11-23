@@ -136,6 +136,8 @@ export async function syncAll() {
     }
     for (const l of local) {
       const c = cloud.find(x => x.id === l.id);
+      // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
+      if (store === 'branches') continue;
       if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) await pushDoc(store, l as never).catch(() => {});
     }
   }
@@ -157,10 +159,11 @@ export async function initializeBranches() {
     const prev = byId.get(m.id);
     const archived = m.status !== 'active';
     if (prev && prev.archived === archived && prev.name === m.nameAr.trim()) continue;
-    await put('branches', { ...(prev ?? {}), id: m.id, code: m.code ?? undefined, name: m.nameAr.trim(), city: prev?.city || city, archived, updatedAt: stamp } as Branch);
+    // Local only: the master ships with the app; pushing it from every device floods the write queue.
+    await localRepository.put('branches', { ...(prev ?? {}), id: m.id, code: m.code ?? undefined, name: m.nameAr.trim(), city: prev?.city || city, archived, updatedAt: stamp } as Branch);
   }
   // Old sample branches are archived (not deleted) so existing drafts keep working.
-  for (const b of branches.filter(b => b.demo && !b.archived)) await put('branches', { ...b, archived: true });
+  for (const b of branches.filter(b => b.demo && !b.archived)) await localRepository.put('branches', { ...b, archived: true });
   try { localStorage.setItem('rq-branch-master', BRANCH_MASTER_VERSION); } catch { /* ignore */ }
 }
 export const loadQuestions = () => localRepository.loadQuestions();

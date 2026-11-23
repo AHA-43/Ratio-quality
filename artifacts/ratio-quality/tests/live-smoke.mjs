@@ -22,7 +22,7 @@ await step('branch master loaded (>=120 active)', async () => {
 });
 await step('start draft and answer with photo', async () => {
   await p.getByTestId('input-branch-search').fill('HAS.01'); await p.locator('.branch-option').first().click();
-  await p.getByTestId('button-create-inspection').click(); await p.waitForURL(/\/inspection\//); id = p.url().split('/').pop();
+  await p.getByTestId('button-create-inspection').click(); await p.waitForURL(u => /\/inspection\/(?!new)[^/]+$/.test(String(u))); id = p.url().split('/').pop();
   await p.getByTestId('answer-pass-1').click(); await p.waitForTimeout(700);
   await p.getByTestId('answer-pass-2').click(); await p.waitForTimeout(700);
   await p.getByTestId('answer-fail-3').click(); await p.getByTestId('input-observation-3').fill('اختبار آلي — يُحذف');
