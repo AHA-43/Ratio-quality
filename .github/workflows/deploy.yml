@@ -95,6 +95,45 @@ jobs:
             fi
           done
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Provision accounts with a preset password (config/provision.json holds only salted PBKDF2 hashes)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -uo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          KEY=$(grep -m1 '^VITE_FIREBASE_API_KEY=' artifacts/ratio-quality/.env.production | cut -d= -f2)
+          IT="https://identitytoolkit.googleapis.com/v1"
+          hash() { python3 - "$1" "$2" <<'PY'
+          import sys,hashlib,base64
+          pw,salt=sys.argv[1].encode(),base64.b64decode(sys.argv[2])
+          print(base64.b64encode(hashlib.pbkdf2_hmac('sha256',pw,salt,120000,dklen=32)).decode())
+          PY
+          }
+          # --- self-test: import a throw-away user from a hash, then sign in with the plain password, then delete it
+          TP=$(openssl rand -hex 12); TS=$(openssl rand -base64 16); TL="cihash$(openssl rand -hex 8)"; TE="ci-hash-${GITHUB_RUN_ID}@example.com"
+          TH=$(hash "$TP" "$TS")
+          curl -s -X POST "$IT/projects/ratio-quality/accounts:batchCreate" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+            -d "$(jq -n --arg l "$TL" --arg e "$TE" --arg h "$TH" --arg s "$TS" '{hashAlgorithm:"PBKDF2_SHA256",rounds:120000,users:[{localId:$l,email:$e,emailVerified:true,passwordHash:$h,salt:$s}]}')" | jq -c '.' 
+          OK=$(curl -s -X POST "$IT/accounts:signInWithPassword?key=$KEY" -H "Content-Type: application/json" -d "$(jq -n --arg e "$TE" --arg p "$TP" '{email:$e,password:$p,returnSecureToken:true}')" | jq -r '.idToken // empty')
+          curl -s -X POST "$IT/projects/ratio-quality/accounts:delete" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"localId\":\"$TL\"}" >/dev/null
+          if [ -z "$OK" ]; then echo "SELFTEST FAILED: hash import did not allow sign-in; provisioning skipped"; rm -f "$RUNNER_TEMP/sa.json"; exit 1; fi
+          echo "SELFTEST OK: hash-imported account can sign in"
+          [ -f config/provision.json ] || { echo "no provision.json"; rm -f "$RUNNER_TEMP/sa.json"; exit 0; }
+          jq -c '.[]' config/provision.json | while read -r U; do
+            EMAIL=$(jq -r .email <<<"$U")
+            LOOK=$(curl -s -X POST "$IT/projects/ratio-quality/accounts:lookup" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$(jq -n --arg e "$EMAIL" '{email:[$e]}')")
+            LID=$(jq -r '.users[0].localId // empty' <<<"$LOOK"); LAST=$(jq -r '.users[0].lastLoginAt // empty' <<<"$LOOK")
+            if [ -n "$LID" ] && [ -n "$LAST" ]; then echo "keep $EMAIL (has already signed in, password untouched)"; continue; fi
+            [ -n "$LID" ] || LID="u$(openssl rand -hex 14)"
+            R=$(curl -s -X POST "$IT/projects/ratio-quality/accounts:batchCreate" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+              -d "$(jq -n --arg l "$LID" --arg e "$EMAIL" --argjson u "$U" '{allowOverwrite:true,hashAlgorithm:"PBKDF2_SHA256",rounds:120000,users:[{localId:$l,email:$e,emailVerified:true,passwordHash:$u.hash,salt:$u.salt}]}')")
+            echo "provision $EMAIL: $(echo "$R" | jq -c '.error // "ok"')"
+            # verify without knowing the password is impossible here: the self-test above proves the method
+          done
+          rm -f "$RUNNER_TEMP/sa.json"
       - name: Ensure project owner (earliest account) is admin
         continue-on-error: true
         env:
