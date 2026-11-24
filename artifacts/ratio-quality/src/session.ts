@@ -1,7 +1,7 @@
 // User profile, roles, audit log, inspection numbering and approval workflow.
 import { useEffect, useState } from 'react';
 import { addDoc, collection, doc, getDoc, getDocs, runTransaction, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, cloudEnabled, fs } from './cloud';
+import { auth, cloudEnabled, fs, createAccountAsAdmin } from './cloud';
 import type { Inspection, Question } from './data';
 
 export type Role = 'admin' | 'quality_manager' | 'inspector';
@@ -55,6 +55,17 @@ export async function listUsers(): Promise<Profile[]> {
   if (!fs) return [];
   const snap = await getDocs(collection(fs, 'users'));
   return snap.docs.map(d => ({ uid: d.id, ...(d.data() as Omit<Profile, 'uid'>) })).map(u => ({ ...u, active: u.active !== false, canApprove: Boolean(u.canApprove), role: u.role || 'inspector' }));
+}
+/** 12-character password from an unambiguous alphabet, shown as xxxx-xxxx-xxxx. */
+export function generatePassword() {
+  const alpha = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const buf = new Uint32Array(12); crypto.getRandomValues(buf);
+  const c = [...buf].map(n => alpha[n % alpha.length]).join(''); return `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
+}
+export async function adminCreateUser(input: { name: string; email: string; role: Role; canApprove: boolean; password: string }): Promise<string> {
+  const uid = await createAccountAsAdmin(input.email.trim().toLowerCase(), input.password, input.name.trim());
+  if (input.role !== 'inspector' || input.canApprove) await updateUser(uid, { role: input.role, canApprove: input.canApprove });
+  await audit('user.create', 'users', uid, { email: input.email, role: input.role, canApprove: input.canApprove });
+  return uid;
 }
 export async function updateUser(uid: string, patch: Partial<Pick<Profile, 'role' | 'canApprove' | 'active' | 'name'>>) {
   if (!fs) return;

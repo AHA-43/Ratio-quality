@@ -1,8 +1,8 @@
 // Thin Firebase layer. The app keeps working fully offline on Dexie; when Firebase is configured
 // (VITE_FIREBASE_* env vars) users must sign in and data is mirrored to Firestore + Storage.
-import { initializeApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, type User } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction } from 'firebase/firestore';
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, type User } from 'firebase/auth';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
 const env: Record<string, string | undefined> = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
@@ -24,6 +24,26 @@ if (app && env.VITE_USE_EMULATORS === 'true') {
 export const watchUser = (cb: (u: User | null) => void) => auth ? onAuthStateChanged(auth, cb) : (cb(null), () => {});
 export const signIn = (email: string, password: string) => signInWithEmailAndPassword(auth!, email, password);
 export const signOutUser = () => signOut(auth!);
+/** Creates an account WITHOUT touching the admin's own session: a second, throw-away Firebase app does the sign-up. */
+export async function createAccountAsAdmin(email: string, password: string, name: string): Promise<string> {
+  if (!app) throw new Error('cloud disabled');
+  const sec = initializeApp(app.options, `rq-create-${Date.now()}`);
+  try {
+    const a = getAuth(sec); const f = getFirestore(sec);
+    if (env.VITE_USE_EMULATORS === 'true') { connectAuthEmulator(a, 'http://127.0.0.1:9099', { disableWarnings: true }); connectFirestoreEmulator(f, '127.0.0.1', 8080); }
+    const cred = await createUserWithEmailAndPassword(a, email, password);
+    await updateProfile(cred.user, { displayName: name });
+    // the new user writes their own plain-inspector profile (allowed by the rules); the admin then sets the role.
+    await setDoc(doc(f, 'users', cred.user.uid), { email, name, role: 'inspector', canApprove: false, active: true, createdAt: new Date().toISOString() });
+    await signOut(a);
+    return cred.user.uid;
+  } finally { await deleteApp(sec).catch(() => {}); }
+}
+export async function changeMyPassword(current: string, next: string) {
+  const u = auth?.currentUser; if (!u?.email) throw new Error('signed-out');
+  await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, current));
+  await updatePassword(u, next);
+}
 export const isSignedIn = () => Boolean(auth?.currentUser);
 
 type Att = { id: string; data: string; storagePath?: string; [k: string]: unknown };

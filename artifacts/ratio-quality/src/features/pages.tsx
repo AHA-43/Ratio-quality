@@ -4,7 +4,7 @@ import type { ActionItem, Barista, BaristaEval, Branch, Equipment, Inspection, Q
 import { list, newId, put, QUESTIONS } from '../data';
 import { calculateScore } from '../scoring';
 import { nameKey, overdueDays } from './text';
-import { audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
+import { adminCreateUser, generatePassword, audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
 import { cloudEnabled } from '../cloud';
 import { type BranchScore } from './position';
 import { SaudiMap } from './SaudiMap';
@@ -241,11 +241,39 @@ export function UsersPage() {
   const [err, setErr] = useState('');
   const load = () => listUsers().then(setUsers).catch(() => setErr('تعذّر تحميل المستخدمين (يتطلب صلاحية مدير واتصالاً بالإنترنت).'));
   useEffect(() => { load(); listAudit().then(l => setLog(l.slice(0, 60))).catch(() => {}); }, []);
+  const [adding, setAdding] = useState(false); const [busy, setBusy] = useState(false);
+  const [nu, setNu] = useState<{ name: string; email: string; role: Role; canApprove: boolean }>({ name: '', email: '', role: 'inspector', canApprove: false });
+  const [created, setCreated] = useState<{ name: string; email: string; password: string; role: Role } | null>(null); const [addErr, setAddErr] = useState(''); const [copied, setCopied] = useState(false);
+  const createUser = async (e: React.FormEvent) => {
+    e.preventDefault(); setAddErr('');
+    if (!nu.name.trim()) { setAddErr('اكتب اسم المستخدم.'); return; }
+    if (!isValidEmail(nu.email.trim())) { setAddErr('اكتب بريداً إلكترونياً صحيحاً.'); return; }
+    setBusy(true); const password = generatePassword();
+    try { await adminCreateUser({ ...nu, password }); setCreated({ name: nu.name.trim(), email: nu.email.trim().toLowerCase(), password, role: nu.role }); setNu({ name: '', email: '', role: 'inspector', canApprove: false }); setAdding(false); load(); }
+    catch (er) { const c = (er as { code?: string }).code ?? ''; setAddErr(c.includes('email-already-in-use') ? 'هذا البريد مسجّل مسبقاً. ابحث عنه في القائمة أدناه.' : c.includes('invalid-email') ? 'البريد غير صحيح.' : c.includes('network') ? 'لا يوجد اتصال بالإنترنت.' : 'تعذّر إنشاء الحساب. حاول مرة أخرى.'); }
+    setBusy(false);
+  };
+  const shareText = created ? `مرحباً ${created.name}،\nتم إنشاء حسابك في ريشيو للجودة (${ROLE_LABEL[created.role]}).\nالرابط: ${window.location.origin}\nالبريد: ${created.email}\nكلمة المرور: ${created.password}\nيمكنك تغيير كلمة المرور بعد الدخول من الإعدادات.` : '';
   if (!cloudEnabled) return <div className="page-content"><p>إدارة المستخدمين متاحة عند ربط التطبيق بـ Firebase.</p></div>;
   const admin = profile?.role === 'admin';
   return <div className="page-content">
     <Title eyebrow="الصلاحيات" title="المستخدمون والأدوار" detail="الحسابات تُنشأ بالدعوة. مدير النظام يحدد الدور وصلاحية الاعتماد. صلاحيات الحساب تُفرض أيضاً في قواعد الخادم."/>
     {err && <div className="alert alert-danger">{err}</div>}
+    {admin && <section className="surface-card add-user">
+      {!adding ? <button type="button" className="button button-primary add-user-open" onClick={() => { setAdding(true); setCreated(null); }} data-testid="button-add-user">+ إضافة مستخدم</button> :
+        <form onSubmit={createUser} className="add-user-form"><div className="card-heading"><div><span className="eyebrow">حساب جديد</span><h2>إضافة مستخدم</h2></div></div>
+          <label className="field"><span>الاسم <em>*</em></span><input value={nu.name} onChange={e => setNu({ ...nu, name: e.target.value })} placeholder="الاسم الكامل" data-testid="input-new-name"/></label>
+          <label className="field"><span>البريد الإلكتروني <em>*</em></span><input type="email" dir="ltr" value={nu.email} onChange={e => setNu({ ...nu, email: e.target.value })} placeholder="name@example.com" data-testid="input-new-email"/></label>
+          <label className="field"><span>الدور</span><select value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value as Role })} data-testid="select-new-role">{(Object.keys(ROLE_LABEL) as Role[]).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></label>
+          <label className="sig-decline"><input type="checkbox" checked={nu.canApprove} onChange={e => setNu({ ...nu, canApprove: e.target.checked })}/> مخوّل باعتماد التقارير</label>
+          <p className="small-muted">تُولَّد كلمة مرور تلقائياً وتظهر لك مرة واحدة لترسلها للمستخدم.</p>
+          {addErr && <div className="form-error" role="alert">{addErr}</div>}
+          <div className="diag-actions"><button type="submit" className="button button-primary" disabled={busy} data-testid="button-create-user">{busy ? 'جارٍ الإنشاء…' : 'إنشاء الحساب'}</button><button type="button" className="button button-outline" onClick={() => { setAdding(false); setAddErr(''); }}>إلغاء</button></div></form>}
+    </section>}
+    {created && <section className="surface-card created-user" role="status" data-testid="created-user"><span className="eyebrow">تم إنشاء الحساب</span><h2>{created.name} · {ROLE_LABEL[created.role]}</h2>
+      <dl><dt>البريد</dt><dd dir="ltr">{created.email}</dd><dt>كلمة المرور</dt><dd dir="ltr" className="cu-pw" data-testid="created-password">{created.password}</dd></dl>
+      <p className="small-muted">احفظها الآن أو أرسلها، لن تظهر مرة ثانية.</p>
+      <div className="diag-actions"><button type="button" className="button button-soft" onClick={async () => { try { await navigator.clipboard.writeText(shareText); setCopied(true); } catch { window.prompt('انسخ الرسالة', shareText); } }}>{copied ? 'تم النسخ ✓' : 'نسخ الرسالة'}</button><a className="button button-soft" href={`https://wa.me/?text=${encodeURIComponent(shareText)}`} target="_blank" rel="noreferrer">إرسال واتساب</a><button type="button" className="button button-outline" onClick={() => { setCreated(null); setCopied(false); }}>تم</button></div></section>}
     <div className="action-cards">{users.map(u => <section key={u.uid} className="surface-card user-card">
       <div className="action-head"><b>{u.name || u.email}</b><span className="action-date" dir="ltr">{u.email}</span></div>
       <div className="action-edit">

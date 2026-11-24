@@ -20,6 +20,8 @@ const val = f => f?.stringValue ?? f?.integerValue ?? f?.booleanValue ?? f?.mapV
 
 const inspUid = await signUp('inspector@test.local');
 const qmUid = await signUp('manager@test.local');
+const adminUid = await signUp('admin@test.local');
+await fetch(`${FS}/users/${adminUid}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { email: { stringValue: 'admin@test.local' }, name: { stringValue: 'مدير النظام' }, role: { stringValue: 'admin' }, canApprove: { booleanValue: true }, active: { booleanValue: true } } }) });
 // Manager role is granted by an admin (service account here).
 await fetch(`${FS}/users/${qmUid}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { email: { stringValue: 'manager@test.local' }, name: { stringValue: 'مدير الجودة' }, role: { stringValue: 'quality_manager' }, canApprove: { booleanValue: true }, active: { booleanValue: true } } }) });
 
@@ -179,6 +181,29 @@ await step('new user is asked for a display name once; it is saved and used in t
   for (let k = 0; k < 10 && name !== 'سارة العتيبي'; k++) { await new Promise(r => setTimeout(r, 700)); name = val((await fsGet(`users/${uid3}`)).fields?.name) ?? ''; }
   assert.equal(name, 'سارة العتيبي');
   await c.close();
+});
+await step('admin adds a user from the Users page; the new account works and the admin stays signed in', async () => {
+  const C = await newDevice(); await login(C.p, 'admin@test.local');
+  await C.p.goto(APP + '/users'); await C.p.waitForSelector('[data-testid=button-add-user]');
+  await C.p.getByTestId('button-add-user').click();
+  await C.p.getByTestId('input-new-name').fill('مفتش جديد'); await C.p.getByTestId('input-new-email').fill('Newbie@Test.local');
+  await C.p.getByTestId('select-new-role').selectOption('quality_manager');
+  if (process.env.SHOT_DIR) await C.p.screenshot({ path: `${process.env.SHOT_DIR}/u-form.png` });
+  await C.p.getByTestId('button-create-user').click(); await C.p.waitForSelector('[data-testid=created-user]', { timeout: 20000 });
+  if (process.env.SHOT_DIR) await C.p.screenshot({ path: `${process.env.SHOT_DIR}/u-created.png` });
+  const pw = (await C.p.getByTestId('created-password').innerText()).trim(); assert.match(pw, /^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/);
+  const r = await (await fetch(`${AUTH}/accounts:signInWithPassword?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'newbie@test.local', password: pw, returnSecureToken: true }) })).json();
+  assert.ok(r.idToken, 'new account can sign in with the generated password');
+  const doc = await fsGet(`users/${r.localId}`); assert.equal(val(doc.fields.role), 'quality_manager'); assert.equal(val(doc.fields.name), 'مفتش جديد');
+  await C.p.goto(APP + '/users'); await C.p.waitForSelector('.user-card'); assert.ok(await C.p.getByText('newbie@test.local').count() > 0, 'listed in users');
+  assert.equal(await C.p.locator('.login-card').count(), 0, 'admin session untouched');
+  // the new user changes the password from Settings
+  const D = await newDevice(); await D.p.goto(APP + '/'); await D.p.waitForSelector('.login-card'); await D.p.locator('input[type=email]').fill('newbie@test.local'); await D.p.locator('input[type=password]').fill(pw); await D.p.getByRole('button', { name: 'دخول' }).click(); await D.p.waitForSelector('.today', { timeout: 20000 });
+  await D.p.goto(APP + '/settings'); await D.p.waitForSelector('[data-testid=input-pw-current]');
+  await D.p.getByTestId('input-pw-current').fill(pw); await D.p.getByTestId('input-pw-new').fill('Brand-new-pass-9'); await D.p.getByTestId('input-pw-confirm').fill('Brand-new-pass-9');
+  await D.p.getByRole('button', { name: 'حفظ كلمة المرور' }).click(); await D.p.waitForSelector('.form-ok', { timeout: 15000 });
+  const r2 = await (await fetch(`${AUTH}/accounts:signInWithPassword?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'newbie@test.local', password: 'Brand-new-pass-9', returnSecureToken: true }) })).json();
+  assert.ok(r2.idToken, 'new password works'); await C.c.close(); await D.c.close();
 });
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
 
