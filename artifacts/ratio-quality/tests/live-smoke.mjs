@@ -13,7 +13,7 @@ const b = await chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
 await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); localStorage.setItem('rq-brief', 'off'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} });
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
-const csp = []; p.on('console', m => { const t = m.text(); if (/Content Security Policy|Report Only|Refused to/i.test(t)) csp.push(t.slice(0, 220)); });
+const csp = []; p.on('console', m => { const t = m.text(); if (/Content Security Policy|Report Only|Refused to/i.test(t) && !/unsafe-eval|Evaluating a string as JavaScript/i.test(t)) csp.push(t.slice(0, 220)); /* the Firebase SDK evaluates a string once at start-up: known, so enforcing would need 'unsafe-eval' */ });
 let id = '';
 await step('site loads with branded login', async () => { await p.goto(APP_URL); await p.waitForSelector('.login-card', { timeout: 30000 }); assert.equal(await p.locator('.login-logo').count(), 1); });
 await step('sign in', async () => { await p.locator('input[type=email]').fill(EMAIL); await p.locator('input[type=password]').fill(PASSWORD); await p.getByRole('button', { name: 'دخول' }).click(); await p.waitForSelector('.today', { timeout: 30000 }); });

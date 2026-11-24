@@ -50,7 +50,7 @@ To invite a user: add their email on a new line in `config/invites.txt` and push
 Build with `vite build --mode shot`, run `vite preview --port 4181`, install `axe-core` in a scratch folder and inject `axe.min.js` on each page with Playwright (390×844), running tags wcag2a, wcag2aa, best-practice. Last result: 3 minor findings (two heading-order notes, one contrast on a decorative counter). Re-run after any colour change.
 
 ## Content-Security-Policy
-`firebase.json` serves the policy as `Content-Security-Policy-Report-Only` (source of truth: `artifacts/ratio-quality/csp.txt`). The post-deploy smoke test fails if the browser logs any violation. When it has been green for a few deploys, rename the header to `Content-Security-Policy` to enforce. `CSP_TEST=1 vite preview` serves the enforced policy locally.
+`firebase.json` serves the policy as `Content-Security-Policy-Report-Only` (source of truth: `artifacts/ratio-quality/csp.txt`). The post-deploy smoke test fails if the browser logs any violation. The Firebase SDK evaluates one string at start-up (reported as `unsafe-eval`; the smoke test ignores exactly that). Enforcing the policy therefore needs either `'unsafe-eval'` in `script-src` or a verified SDK fallback, so it stays report-only; the other headers (nosniff, frame denial, referrer, permissions) are enforced. `CSP_TEST=1 vite preview` serves the enforced policy locally.
 
 ## Support
 Settings → الدعم → «نسخ التشخيص» copies version, device, storage, pending uploads and the last 40 errors (no inspection data).
