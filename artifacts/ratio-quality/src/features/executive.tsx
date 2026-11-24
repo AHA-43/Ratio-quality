@@ -3,7 +3,9 @@ import { Link } from 'wouter';
 import { ArrowLeft, Printer, TrendingDown, TrendingUp } from 'lucide-react';
 import type { ActionItem, Branch, Inspection } from '../data';
 import { CountUp } from './brand-motion';
-import { executiveSummary } from './insights';
+import { audit } from '../session';
+import { availableMonths, executiveSummary } from './insights';
+import { monthLabel } from './monthly-report';
 
 type D = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] };
 const CLS: [string, string][] = [['ممتاز', '#3f9b6a'], ['جيد', '#7584F7'], ['يحتاج تحسين', '#D9A441'], ['غير مقبول', '#E5584F']];
@@ -31,6 +33,15 @@ function Trend({ data }: { data: { key: string; avg: number; n: number }[] }) {
 export function ExecutivePage({ data }: { data: D }) {
   const [days, setDays] = useState(90);
   const s = useMemo(() => executiveSummary(data, days), [data.inspections, data.branches, data.actions, days]);
+  const months = useMemo(() => availableMonths(data.inspections), [data.inspections]);
+  const [month, setMonth] = useState(''); const [busy, setBusy] = useState(false); const [err, setErr] = useState('');
+  const ym = month || months[0] || '';
+  const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
+  const makeMonthly = async (share: boolean) => {
+    if (!ym) return; setBusy(true); setErr('');
+    try { const [{ exportMonthlyReport }, { deliver }] = await Promise.all([import('./monthly-report'), import('./exports')]); const out = await exportMonthlyReport(data, ym); await deliver(out.blob, out.name, share); audit('report.monthly.export', 'reports', ym, { share }); }
+    catch (e) { console.error(e); setErr('تعذّر إنشاء التقرير. حاول مرة أخرى.'); } setBusy(false);
+  };
   const tone = s.avg === null ? 'navy' : s.avg >= 90 ? 'good' : s.avg >= 80 ? 'ok' : s.avg >= 70 ? 'warn' : 'bad';
   return <div className="page-content ex-page">
     <div className="page-title"><div><span className="eyebrow">نظرة تنفيذية</span><h1>لوحة الإدارة</h1><p>خلاصة أداء الجودة في الفروع، جاهزة للعرض والطباعة.</p></div><button type="button" className="button button-outline no-print" onClick={() => window.print()}><Printer size={16}/> طباعة / PDF</button></div>
@@ -43,6 +54,11 @@ export function ExecutivePage({ data }: { data: D }) {
     </section>
 
     <section className="surface-card ex-brief"><div className="card-heading"><div><span className="eyebrow">ملخص مكتوب تلقائياً</span><h2>الخلاصة للإدارة</h2></div></div><ul>{s.narrative.map((t, i) => <li key={i}>{t}</li>)}</ul></section>
+
+    <section className="surface-card ex-monthly no-print"><div><span className="eyebrow">جاهز للإرسال للإدارة</span><h2>التقرير الشهري</h2><p>عرض PowerPoint من 8 شرائح: الخلاصة، التصنيفات، الاتجاه، الأقسام، الفروع، أكثر البنود فشلاً، الإجراءات، والتوصيات.</p></div>
+      {months.length ? <div className="ex-monthly-act"><label className="field"><span>الشهر</span><select value={ym} onChange={e => setMonth(e.target.value)} data-testid="select-month">{months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
+        <button type="button" className="button button-primary" disabled={busy} onClick={() => makeMonthly(false)} data-testid="button-monthly">{busy ? 'جارٍ الإنشاء…' : 'تنزيل التقرير'}</button>{canShare && <button type="button" className="button button-soft" disabled={busy} onClick={() => makeMonthly(true)}>مشاركة</button>}</div> : <p className="pr-empty">يظهر هنا بعد اعتماد أول زيارة.</p>}
+      {err && <small className="form-error">{err}</small>}</section>
 
     <div className="ex-kpis">
       <div className="ex-kpi"><span>تغطية الزيارات</span><b>{s.coveragePct}%</b><i><em style={{ width: `${s.coveragePct}%` }}/></i></div>

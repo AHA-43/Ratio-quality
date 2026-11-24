@@ -10,7 +10,7 @@ const failed = (i: Inspection, q: Question) => { const a = i.answers[q.id]; retu
 const resultAr = (v: unknown) => v === 'pass' ? 'مطابق' : v === 'fail' ? 'غير مطابق' : v === 'na' ? 'لا ينطبق' : 'بدون إجابة';
 const fileBase = (i: Inspection) => `${i.number ?? 'RQ'}_${(i.branchCode ?? 'BRANCH').replace(/[^A-Za-z0-9.]+/g, '-')}_${i.date.slice(0, 10)}`;
 
-async function toDataUrl(src: string): Promise<string | null> {
+export async function toDataUrl(src: string): Promise<string | null> {
   if (!src) return null;
   if (src.startsWith('data:')) return src;
   try {

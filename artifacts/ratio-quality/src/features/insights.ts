@@ -128,11 +128,17 @@ export const pct = (n: number | string) => `\u2066${n}%\u2069`;
 const mean = (xs: number[]) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 
-export function executiveSummary(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, days = 90, now = Date.now()): ExecSummary {
+export type Range = { from: number; to: number; prevFrom: number; prevTo: number };
+/** Calendar month (YYYY-MM) and the month before it. */
+export function monthRange(ym: string): Range { const [y, m] = ym.split('-').map(Number); return { from: Date.UTC(y, m - 1, 1), to: Date.UTC(y, m, 1), prevFrom: Date.UTC(y, m - 2, 1), prevTo: Date.UTC(y, m - 1, 1) }; }
+export const availableMonths = (inspections: Inspection[]) => [...new Set(inspections.filter(isReal).map(i => new Date(dateOf(i)).toISOString().slice(0, 7)))].sort().reverse();
+
+export function executiveSummary(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, days = 90, now = Date.now(), range?: Range): ExecSummary {
   const real = input.inspections.filter(isReal);
   const active = input.branches.filter(b => !b.archived && !b.demo);
   const inWin = (i: Inspection, from: number, to: number) => { const age = now - dateOf(i); return age >= from * DAY && age < to * DAY; };
-  const cur = real.filter(i => inWin(i, 0, days)), prev = real.filter(i => inWin(i, days, days * 2));
+  const cur = range ? real.filter(i => dateOf(i) >= range.from && dateOf(i) < range.to) : real.filter(i => inWin(i, 0, days));
+  const prev = range ? real.filter(i => dateOf(i) >= range.prevFrom && dateOf(i) < range.prevTo) : real.filter(i => inWin(i, days, days * 2));
   const scoreOf = (i: Inspection) => calculateScore(i.questionSnapshot, i.answers);
   const scores = cur.map(scoreOf), pscores = prev.map(scoreOf);
   const avg = mean(scores.filter(s => s.score !== null).map(s => s.score!)), prevAvg = mean(pscores.filter(s => s.score !== null).map(s => s.score!));

@@ -844,3 +844,10 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
   body.runner-focus .runner-page { padding-bottom: 76px; } body.runner-focus .field-toast { bottom: 70px; }
 }
 @media (max-height: 520px) and (orientation: landscape) { .runner-intro h1, .runner-intro p { display: none; } .runner-intro { margin-bottom: 4px; } .page-wrap { padding-top: 12px; } }
+.ex-monthly { display: grid; gap: 12px; padding: 16px 18px; margin-bottom: 14px; background: linear-gradient(135deg, #fff, var(--corn-soft)); border: 1px solid #d5dafc; } .ex-monthly h2 { margin: 2px 0 6px; font-size: 18px; } .ex-monthly p { margin: 0; font-size: 12.5px; color: #55558a; line-height: 1.8; }
+.ex-monthly-act { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; } .ex-monthly-act .field { flex: 1; min-width: 150px; } .ex-monthly-act .button { min-height: 46px; }
+/* field-screen controls are used one-handed all day: 44px minimum on every touch device */
+@media (max-width: 767px), (pointer: coarse) {
+  .quick-phrases button, .wh-chips button, .wh-tidy, .dictate, .hud-auto, .field-toast button, .heat-strip + .question-breadcrumb button { min-height: 44px; }
+  .wh-chips { gap: 8px; } .quick-phrases { gap: 8px; }
+}

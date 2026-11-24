@@ -54,3 +54,9 @@ Build with `vite build --mode shot`, run `vite preview --port 4181`, install `ax
 
 ## Support
 Settings → الدعم → «نسخ التشخيص» copies version, device, storage, pending uploads and the last 40 errors (no inspection data).
+
+## Device matrix (`pnpm --filter @workspace/ratio-quality test:devices`)
+Chromium with 8 real device profiles (iPhone SE/14 Pro Max/14 landscape, Pixel 7, Galaxy S9+, iPad Mini/Pro 11, Galaxy Tab S4) under slow 4G + 4x CPU slowdown: first load ≈ 4.5 s / 704 KB, a visit with a photographed failure, then an **offline reload from the service-worker cache**, a lazy screen opened offline, answers kept, 44 px touch targets, no horizontal overflow. This is emulation, not iOS Safari: confirm on a real iPhone/iPad before relying on iOS-specific behaviour (install, camera, wake lock).
+
+## Monthly report
+Executive dashboard → التقرير الشهري → pick a month → PowerPoint (8 slides, editable native charts, auto-written summary and recommendations). Logic in `features/monthly-report.ts` (unit-tested).
