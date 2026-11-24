@@ -188,10 +188,26 @@ export async function exportPptx(i: Inspection, actions: ActionItem[]): Promise<
   return { blob, name: `${fileBase(i)}.pptx` };
 }
 
-export function mailtoLink(i: Inspection, to: string[] = [], cc: string[] = []) {
+export type MailTemplate = { id: string; name: string; subject: string; body: string };
+/* Placeholders: {branch} {code} {date} {number} {score} {class} {status} {inspector} {critical} */
+export const MAIL_TEMPLATES: MailTemplate[] = [
+  { id: 'standard', name: 'تقرير زيارة (عام)', subject: 'تقرير زيارة الجودة — {branch} — {date}', body: 'السلام عليكم،\n\nنرفق لكم نتائج زيارة الجودة لفرع {branch} {code} بتاريخ {date}.\n\nرقم الزيارة: {number}\nالنسبة الموزونة: {score}%\nالتصنيف: {class}\nالحالة: {status}\n\nنأمل الاطلاع على الملاحظات وتنفيذ الإجراءات التصحيحية في مواعيدها.\n\nمع التحية،\n{inspector}\nإدارة الجودة — ريشيو' },
+  { id: 'excellent', name: 'شكر وتقدير (نتيجة ممتازة/جيدة)', subject: 'نتيجة زيارة الجودة — {branch} — {class}', body: 'السلام عليكم،\n\nيسعدنا إبلاغكم بنتيجة زيارة الجودة لفرع {branch} {code} بتاريخ {date}: {score}% ({class}).\n\nنشكر الفريق على جهوده ونأمل المحافظة على هذا المستوى. تجدون التقرير المرفق للاطلاع على التفاصيل.\n\nمع التحية،\n{inspector}\nإدارة الجودة — ريشيو' },
+  { id: 'followup', name: 'مطلوب إجراءات تصحيحية', subject: 'مطلوب إجراءات تصحيحية — {branch} — {date}', body: 'السلام عليكم،\n\nنتيجة زيارة الجودة لفرع {branch} {code} بتاريخ {date}: {score}% ({class}).\n\nيوجد ملاحظات تتطلب إجراءً تصحيحياً (الحرجة خلال 24 ساعة، الرئيسية خلال 72 ساعة، البسيطة خلال 7 أيام). نرجو تأكيد خطة التصحيح ومسؤول التنفيذ، وسنجري زيارة متابعة.\n\nرقم الزيارة: {number}\n\nمع التحية،\n{inspector}\nإدارة الجودة — ريشيو' },
+  { id: 'critical', name: 'عاجل: إخفاق حرج', subject: 'عاجل — إخفاق حرج في {branch} — {date}', body: 'السلام عليكم،\n\nسُجّل في زيارة الجودة لفرع {branch} {code} بتاريخ {date} عدد {critical} إخفاق حرج، ولذلك صُنّفت الزيارة «{class}».\n\nيلزم معالجة البنود الحرجة خلال 24 ساعة وإفادتنا بما تم. التقرير المرفق فيه التفاصيل والصور.\n\nرقم الزيارة: {number}\n\nمع التحية،\n{inspector}\nإدارة الجودة — ريشيو' },
+];
+export function suggestTemplate(i: Inspection): string {
   const s = calculateScore(i.questionSnapshot, i.answers);
-  const subject = `تقرير زيارة الجودة — ${i.branchName} — ${i.date.slice(0, 10)}`;
-  const body = `السلام عليكم،\n\nنرفق لكم نتائج زيارة الجودة لفرع ${i.branchName}${i.branchCode ? ` (${i.branchCode})` : ''} بتاريخ ${i.date.slice(0, 10)}.\n\nرقم الزيارة: ${i.number ?? '—'}\nالنسبة الموزونة: ${s.score ?? '—'}%\nالتصنيف: ${s.classification ?? '—'}\nالحالة: ${workflowLabel(i)}\n\nنأمل الاطلاع على الملاحظات وتنفيذ الإجراءات التصحيحية في مواعيدها.\n\nمع التحية،\n${i.inspector}\nإدارة الجودة — ريشيو`;
+  return s.criticalFailures > 0 ? 'critical' : s.classification === 'ممتاز' || s.classification === 'جيد' ? 'excellent' : s.classification ? 'followup' : 'standard';
+}
+export function renderTemplate(t: { subject: string; body: string }, i: Inspection) {
+  const s = calculateScore(i.questionSnapshot, i.answers);
+  const vars: Record<string, string> = { branch: i.branchName, code: i.branchCode ? `(${i.branchCode})` : '', date: i.date.slice(0, 10), number: i.number ?? '—', score: String(s.score ?? '—'), class: s.classification ?? '—', status: workflowLabel(i), inspector: i.inspector, critical: String(s.criticalFailures) };
+  const fill = (x: string) => x.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m).replace(/ {2,}/g, ' ');
+  return { subject: fill(t.subject), body: fill(t.body) };
+}
+export function mailtoLink(i: Inspection, to: string[] = [], cc: string[] = [], msg?: { subject: string; body: string }) {
+  const m = msg ?? renderTemplate(MAIL_TEMPLATES[0], i);
   const ccPart = cc.length ? `&cc=${encodeURIComponent(cc.join(','))}` : '';
-  return `mailto:${encodeURIComponent(to.join(',')).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(subject)}${ccPart}&body=${encodeURIComponent(body)}`;
+  return `mailto:${encodeURIComponent(to.join(',')).replace(/%40/g, '@').replace(/%2C/g, ',')}?subject=${encodeURIComponent(m.subject)}${ccPart}&body=${encodeURIComponent(m.body)}`;
 }

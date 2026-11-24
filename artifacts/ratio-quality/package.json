@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "build": "vite build --config vite.config.ts",
-    "test": "node --experimental-strip-types --test src/scoring.test.ts src/checklist.test.ts src/exports.test.ts src/writing.test.ts src/template-pptx.test.ts",
+    "test": "node --experimental-strip-types --test src/scoring.test.ts src/checklist.test.ts src/exports.test.ts src/writing.test.ts src/template-pptx.test.ts src/helpers.test.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:rules": "cd ../.. && npx --yes firebase-tools@14 emulators:exec --only firestore --project demo-ratio 'node --test artifacts/ratio-quality/tests/firestore-rules.test.mjs'",

@@ -605,3 +605,9 @@ body.runner-focus .field-toast { bottom: 188px; }
 .hud-auto + .hud-auto { margin-inline-start: 6px; }
 .action-bar.compact .ab-answers { display: none; } /* keyboard is up: keep only the tools row */
 .action-bar.compact { padding-top: 8px; }
+.score-explain { margin: 10px 0 6px; font-size: 12.5px; line-height: 1.8; color: #3a3a7a; background: var(--corn-soft); border-radius: 12px; padding: 10px 12px; }
+.mail-compose { flex-basis: 100%; display: grid; gap: 8px; margin-top: 4px; }
+.mail-preview { display: grid; gap: 8px; padding: 12px; background: #fff; border: 1px solid var(--milk-line); border-radius: 14px; } .mail-preview textarea { min-height: 160px; }
+.barista-add { display: grid; gap: 10px; margin-bottom: 14px; } .barista-add-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; }
+.barista-actions { display: flex; gap: 14px; margin: 4px 0 6px; }
+@media (max-width: 600px) { .barista-add-row { grid-template-columns: 1fr; } }

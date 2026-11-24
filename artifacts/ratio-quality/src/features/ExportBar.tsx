@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ActionItem, Inspection } from '../data';
 import { useEffect } from 'react';
 import { audit, listMail, logMail, useConfig, type MailEntry } from '../session';
-import { deliver, exportPptx, exportXlsx, mailtoLink } from './exports';
+import { deliver, exportPptx, exportXlsx, mailtoLink, MAIL_TEMPLATES, renderTemplate, suggestTemplate } from './exports';
 import { exportTemplatePptx } from './template-pptx';
 
 export function ExportBar({ inspection, actions }: { inspection: Inspection; actions: ActionItem[] }) {
@@ -12,6 +12,10 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   const lists = cfg.recipientLists.filter(l => !l.branchId || l.branchId === inspection.branchId);
   const [listId, setListId] = useState('');
   const chosen = lists.find(l => l.id === listId);
+  const [tplId, setTplId] = useState(() => suggestTemplate(inspection));
+  const [msg, setMsg] = useState(() => renderTemplate(MAIL_TEMPLATES.find(t => t.id === suggestTemplate(inspection)) ?? MAIL_TEMPLATES[0], inspection));
+  const [showMsg, setShowMsg] = useState(false);
+  const pickTemplate = (id: string) => { setTplId(id); setMsg(renderTemplate(MAIL_TEMPLATES.find(t => t.id === id) ?? MAIL_TEMPLATES[0], inspection)); };
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
   const run = async (kind: 'xlsx' | 'pptx' | 'tpl', share: boolean) => {
     setBusy(kind); setErr('');
@@ -31,7 +35,12 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
     {canShare && <button className="button button-soft" disabled={!!busy} onClick={() => run('pptx', true)}>مشاركة العرض</button>}
     {canShare && <button className="button button-soft" disabled={!!busy} onClick={() => run('xlsx', true)}>مشاركة Excel</button>}
     {lists.length > 0 && <select className="typed-input recip-select" value={listId} onChange={e => setListId(e.target.value)} aria-label="قائمة المستلمين"><option value="">اختر المستلمين…</option>{lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}
-    <a className="button button-soft" href={mailtoLink(inspection, chosen?.to, chosen?.cc)} onClick={e => { if (chosen && !window.confirm(`سيتم تجهيز رسالة إلى: ${chosen.to.join(', ')}${chosen.cc.length ? `\nنسخة: ${chosen.cc.join(', ')}` : ''}\nأرفق ملف التقرير قبل الإرسال. متابعة؟`)) { e.preventDefault(); return; } audit('report.email.draft', 'inspections', inspection.id, { list: chosen?.name }); logMail({ inspectionId: inspection.id, channel: 'email', list: chosen?.name, to: chosen?.to, cc: chosen?.cc }); }}>رسالة بريد جاهزة</a>
+    <a className="button button-soft" href={mailtoLink(inspection, chosen?.to, chosen?.cc, msg)} onClick={e => { if (chosen && !window.confirm(`سيتم تجهيز رسالة إلى: ${chosen.to.join(', ')}${chosen.cc.length ? `\nنسخة: ${chosen.cc.join(', ')}` : ''}\nأرفق ملف التقرير قبل الإرسال. متابعة؟`)) { e.preventDefault(); return; } audit('report.email.draft', 'inspections', inspection.id, { list: chosen?.name }); logMail({ inspectionId: inspection.id, channel: 'email', list: chosen?.name, to: chosen?.to, cc: chosen?.cc }); }}>رسالة بريد جاهزة</a>
+    <div className="mail-compose">
+      <label className="field"><span>قالب الرسالة</span><select className="typed-input" value={tplId} onChange={e => pickTemplate(e.target.value)}>{MAIL_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></label>
+      <button type="button" className="text-link" onClick={() => setShowMsg(v => !v)}>{showMsg ? 'إخفاء نص الرسالة' : 'معاينة وتعديل نص الرسالة'}</button>
+      {showMsg && <div className="mail-preview"><label className="field"><span>الموضوع</span><input value={msg.subject} onChange={e => setMsg({ ...msg, subject: e.target.value })}/></label><label className="field"><span>النص</span><textarea rows={9} value={msg.body} onChange={e => setMsg({ ...msg, body: e.target.value })}/></label><small>التعديل هنا يخص هذه الرسالة فقط. أرفق ملف التقرير يدوياً قبل الإرسال.</small></div>}
+    </div>
     {err && <small className="form-error">{err}</small>}
   </div>;
 }

@@ -3,6 +3,7 @@ import { Link, useRoute } from 'wouter';
 import type { ActionItem, Barista, BaristaEval, Branch, Equipment, Inspection, Question } from '../data';
 import { list, newId, put, QUESTIONS } from '../data';
 import { calculateScore } from '../scoring';
+import { nameKey, overdueDays } from './text';
 import { audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
 import { cloudEnabled } from '../cloud';
 import { type BranchScore } from './BranchMap';
@@ -39,7 +40,7 @@ export function ActionsBoard({ data }: { data: AppData }) {
     <div className="filter-scroll">{['مفتوحة', 'متأخرة', 'متكررة', ...STATUSES, 'الكل'].map(s => <button key={s} onClick={() => setFilter(s)} className={`filter-chip ${filter === s ? 'active' : ''}`}>{s}</button>)}</div>
     {!rows.length && <div className="surface-card empty-note">لا توجد إجراءات في هذا التصنيف.</div>}
     <div className="action-cards">{rows.map(a => <section key={a.id} className={`surface-card action-card ${isOverdue(a) ? 'overdue' : ''}`}>
-      <div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>{a.recurring && <span className="wf-pill returned">متكرر</span>}<span className="action-date">{isOverdue(a) ? 'متأخر · ' : ''}الاستحقاق {a.dueDate || '—'}</span></div>
+      <div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>{a.recurring && <span className="wf-pill returned">متكرر</span>}<span className="action-date">{isOverdue(a) ? `متأخر ${overdueDays(a.dueDate)} يوم · ` : ''}الاستحقاق {a.dueDate || '—'}</span></div>
       <h3>{a.title}</h3><p className="action-description">{a.description}</p>{a.recommendation && <p>الإجراء المطلوب: {a.recommendation}</p>}
       <div className="action-edit">
         <label className="field"><span>المسؤول (موظف أو إدارة)</span><input defaultValue={a.responsible} onBlur={e => e.target.value !== a.responsible && change(a, { responsible: e.target.value, status: a.status === 'مفتوح' && e.target.value ? 'مُسند' : a.status })}/></label>
@@ -56,7 +57,7 @@ export function ActionsBoard({ data }: { data: AppData }) {
 /* ===================== Analytics ===================== */
 export function AnalyticsPage({ data }: { data: AppData }) {
   const [from, setFrom] = useState(''); const [to, setTo] = useState('');
-  const [branch, setBranch] = useState(''); const [section, setSection] = useState(''); const [sev, setSev] = useState(''); const [inspector, setInspector] = useState('');
+  const [branch, setBranch] = useState(''); const [section, setSection] = useState(''); const [sev, setSev] = useState(''); const [inspector, setInspector] = useState(''); const [fstatus, setFstatus] = useState('');
   const superseded = new Set(data.inspections.filter(i => i.amendmentOf && i.workflow === 'approved').map(i => i.amendmentOf!));
   const comparable = data.inspections.filter(i => i.status === 'finalized' && (i.checklistVersion ?? '').startsWith('official-pdf-v1') && !superseded.has(i.id));
   const legacy = data.inspections.filter(i => i.status === 'finalized' && !(i.checklistVersion ?? '').startsWith('official-pdf-v1')).length;
@@ -64,7 +65,9 @@ export function AnalyticsPage({ data }: { data: AppData }) {
   const scored = rows.map(i => ({ i, s: calculateScore(i.questionSnapshot, i.answers) }));
   const avg = scored.filter(x => x.s.score !== null).reduce((a, x, _, arr) => a + x.s.score! / arr.length, 0);
   const qFilter = (q: Question) => (!section || q.section === section) && (!sev || q.severity === sev);
-  const findings = rows.flatMap(i => i.questionSnapshot.filter(q => qFilter(q) && (i.answers[q.id]?.value === 'fail' || i.answers[q.id]?.initialValue === 'fail')).map(q => ({ i, q })));
+  const actionFor = (iid: string, qid: number) => data.actions.find(a => a.inspectionId === iid && a.questionId === qid);
+  const statusOk = (iid: string, qid: number) => { if (!fstatus) return true; const a = actionFor(iid, qid); return fstatus === 'none' ? !a : fstatus === 'open' ? Boolean(a) && a!.status !== 'مغلق' : fstatus === 'overdue' ? Boolean(a) && isOverdue(a!) : Boolean(a) && a!.status === 'مغلق'; };
+  const findings = rows.flatMap(i => i.questionSnapshot.filter(q => qFilter(q) && (i.answers[q.id]?.value === 'fail' || i.answers[q.id]?.initialValue === 'fail') && statusOk(i.id, q.id)).map(q => ({ i, q })));
   const byQ = Object.values(findings.reduce<Record<number, { q: Question; n: number; recurring: number }>>((m, f) => { const e = m[f.q.id] ??= { q: f.q, n: 0, recurring: 0 }; e.n++; if (f.i.answers[f.q.id]?.recurring) e.recurring++; return m; }, {})).sort((a, b) => b.n - a.n);
   const byBranch = Object.values(scored.reduce<Record<string, { name: string; scores: number[]; critical: number }>>((m, x) => { const e = m[x.i.branchId] ??= { name: x.i.branchName, scores: [], critical: 0 }; if (x.s.score !== null) e.scores.push(x.s.score); e.critical += x.s.criticalFailures; return m; }, {}))
     .map(b => ({ ...b, avg: b.scores.reduce((a, v) => a + v, 0) / (b.scores.length || 1) })).sort((a, b) => b.avg - a.avg);
@@ -82,6 +85,7 @@ export function AnalyticsPage({ data }: { data: AppData }) {
       <label className="field"><span>الفرع</span><select value={branch} onChange={e => setBranch(e.target.value)}><option value="">الكل</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
       <label className="field"><span>القسم</span><select value={section} onChange={e => setSection(e.target.value)}><option value="">الكل</option>{[...new Set(QUESTIONS.map(q => q.section))].map(s => <option key={s}>{s}</option>)}</select></label>
       <label className="field"><span>الخطورة</span><select value={sev} onChange={e => setSev(e.target.value)}><option value="">الكل</option><option value="Critical">حرج</option><option value="Major">رئيسي</option><option value="Minor">ثانوي</option></select></label>
+      <label className="field"><span>حالة الملاحظة</span><select value={fstatus} onChange={e => setFstatus(e.target.value)}><option value="">الكل</option><option value="none">بدون إجراء تصحيحي</option><option value="open">إجراء مفتوح</option><option value="overdue">إجراء متأخر</option><option value="closed">مغلقة</option></select></label>
       <label className="field"><span>المفتش</span><select value={inspector} onChange={e => setInspector(e.target.value)}><option value="">الكل</option>{inspectors.map(n => <option key={n}>{n}</option>)}</select></label>
     </div>
     <div className="kpi-grid">
@@ -198,8 +202,17 @@ export function BaristasPage({ data }: { data: AppData }) {
   const [baristas, setBaristas] = useState<Barista[]>([]);
   const [evals, setEvals] = useState<BaristaEval[]>([]);
   const [branch, setBranch] = useState('');
-  useEffect(() => { list<Barista>('baristas').then(setBaristas); list<BaristaEval>('baristaEvals').then(setEvals); }, []);
-  const rows = baristas.filter(b => !branch || b.branchId === branch).map(b => {
+  const [newName, setNewName] = useState(''); const [newBranch, setNewBranch] = useState(''); const [msg, setMsg] = useState(''); const [showInactive, setShowInactive] = useState(false);
+  const reload = () => list<Barista>('baristas').then(setBaristas);
+  useEffect(() => { reload(); list<BaristaEval>('baristaEvals').then(setEvals); }, []);
+  const addBarista = async () => {
+    const br = data.branches.find(b => b.id === newBranch); const name = newName.trim();
+    if (!name || !br) { setMsg('اكتب اسم الباريستا واختر الفرع.'); return; }
+    if (baristas.some(b => b.branchId === br.id && nameKey(b.name) === nameKey(name))) { setMsg('هذا الباريستا مسجل مسبقاً في نفس الفرع.'); return; }
+    await put('baristas', { id: newId(), name, branchId: br.id, branchName: br.name, active: true, updatedAt: nowIso() } as Barista); setNewName(''); setMsg('تمت الإضافة.'); reload();
+  };
+  const patch = async (b: Barista, p: Partial<Barista>) => { await put('baristas', { ...b, ...p, updatedAt: nowIso() } as Barista); reload(); };
+  const rows = baristas.filter(b => (showInactive || b.active) && (!branch || b.branchId === branch)).map(b => {
     const es = evals.filter(e => e.baristaId === b.id).sort((x, y) => x.date.localeCompare(y.date));
     const scores = es.map(baristaScore).map(s => s.score).filter((x): x is number => x !== null);
     const gaps = BARISTA_QS.map(q => ({ q, n: es.filter(e => e.answers[q.id] === 'fail').length })).filter(g => g.n >= 2);
@@ -208,9 +221,11 @@ export function BaristasPage({ data }: { data: AppData }) {
   return <div className="page-content">
     <Title eyebrow="أداء الباريستا" title="سجل الباريستا" detail="تاريخ التقييمات الفردية، المقارنة بين الزيارات، وفجوات المهارة المتكررة (بند فشل مرتين أو أكثر)."/>
     <label className="field"><span>الفرع</span><select value={branch} onChange={e => setBranch(e.target.value)}><option value="">الكل</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
+    <div className="surface-card barista-add"><b>إضافة باريستا</b><div className="barista-add-row"><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="اسم الباريستا" aria-label="اسم الباريستا"/><select value={newBranch} onChange={e => setNewBranch(e.target.value)} aria-label="الفرع"><option value="">اختر الفرع</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select><button type="button" className="button button-primary" onClick={addBarista}>إضافة</button></div>{msg && <small>{msg}</small>}<label className="recurring-toggle"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)}/><span className="fake-check"/><span>إظهار الموقوفين</span></label></div>
     {!rows.length && <div className="surface-card empty-note">لا توجد تقييمات بعد. ابدأ من صفحة الزيارة ← «تقييم الباريستا».</div>}
     <div className="action-cards">{rows.map(({ b, es, scores, gaps }) => <section key={b.id} className="surface-card">
-      <div className="action-head"><b>{b.name}</b><span className="action-date">{b.branchName}</span></div>
+      <div className="action-head"><b>{b.name}{!b.active && <em className="wf-pill returned"> موقوف</em>}</b><span className="action-date">{b.branchName}</span></div>
+      <div className="barista-actions"><button type="button" className="text-link" onClick={() => { const n = window.prompt('الاسم الجديد', b.name)?.trim(); if (n && n !== b.name) patch(b, { name: n }); }}>تعديل الاسم</button><button type="button" className="text-link" onClick={() => patch(b, { active: !b.active })}>{b.active ? 'إيقاف' : 'إعادة تفعيل'}</button></div>
       <p>التقييمات {es.length} · آخر نتيجة {scores.at(-1) ?? '—'}% · السابقة {scores.at(-2) ?? '—'}%{scores.length >= 2 ? ` · ${scores.at(-1)! >= scores.at(-2)! ? '↑ تحسّن' : '↓ تراجع'}` : ''}</p>
       {gaps.length > 0 && <div className="recurring-hint"><b>يوصى بمتابعة تدريبية في:</b>{gaps.map(g => <small key={g.q.id}>#{g.q.id} {g.q.title} (تكرر {g.n} مرات)</small>)}</div>}
     </section>)}</div>
