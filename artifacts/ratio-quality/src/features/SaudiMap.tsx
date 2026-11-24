@@ -24,15 +24,24 @@ export function SaudiMap({ branches, scores = {}, onSelect, me }: { branches: Br
   };
   useEffect(() => () => cancelAnimationFrame(anim.current), []);
   const zoom = VW / vb.w;
+  // "Nearest to me": jump to the city that contains the closest branch.
+  useEffect(() => {
+    if (!me || !cities.length) return;
+    let best: { c: typeof cities[number]; d: number } | null = null;
+    for (const c of cities) for (const { p } of c.items) { const d = distanceKm(me, p); if (!best || d < best.d) best = { c, d }; }
+    if (best) { const [x, y] = xy(best.c); setCity(best.c.name); focus(best.c.name, x, y); }
+  }, [me?.lat, me?.lng]);
   const pick = (name: string, x: number, y: number) => {
     if (city === name) { setCity(null); zoomTo({ x: 0, y: 0, w: VW, h: VH }); return; }
-    setCity(name);
+    setCity(name); focus(name, x, y);
+  };
+  function focus(name: string, x: number, y: number) {
     // Adaptive zoom: dense areas (e.g. Dammam–Khobar–Dhahran–Qatif) zoom in further so bubbles separate.
     const near = cities.filter(o => o.name !== name).map(o => { const [ox, oy] = xy(o); return Math.hypot(ox - x, oy - y); }).filter(d => d < 90);
     const f = near.length ? Math.min(9, Math.max(4, 160 / Math.max(12, Math.min(...near)))) : 3.2;
     const w = VW / f, h = VH / f;
     zoomTo({ x: Math.min(Math.max(0, x - w / 2), VW - w), y: Math.min(Math.max(0, y - h / 2), VH - h), w, h });
-  };
+  }
   const cities = useMemo(() => {
     const m = new Map<string, { name: string; items: { b: Branch; p: Pos }[] }>();
     for (const b of branches) { const p = branchPos(b.id, b.name); if (!p) continue; const c = cityOf(b.name); (m.get(c) ?? m.set(c, { name: c, items: [] }).get(c)!).items.push({ b, p }); }

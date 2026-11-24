@@ -253,7 +253,7 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
 const normAr = (v: string) => v.toLowerCase().replace(/[\u064B-\u0652]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
 function BranchPicker({ branches, value, onChange, scores = {} }: { branches: Branch[]; value: string; onChange: (id: string) => void; scores?: BranchScore }) {
   const [q, setQ] = useState('');
-  const [view, setView] = useState<'list' | 'map' | 'street'>('list');
+  const [view, setView] = useState<'list' | 'map' | 'street'>('map');
   const { pos: me, state: geo, locate } = useMyPosition();
   const selected = branches.find(b => b.id === value);
   const list = useMemo(() => {
@@ -266,14 +266,12 @@ function BranchPicker({ branches, value, onChange, scores = {} }: { branches: Br
   if (selected) return <div className="branch-selected" data-testid="branch-selected"><div><b>{selected.name}</b>{selected.code && <span className="branch-code">{selected.code}</span>}</div><button type="button" onClick={() => { onChange(''); setQ(''); }}>تغيير</button></div>;
   return <div className="branch-picker">
     <div className="picker-tools">
-      <div className="segmented"><button type="button" className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>قائمة</button><button type="button" className={view === 'map' ? 'on' : ''} onClick={() => setView('map')} data-testid="branch-map-toggle">المملكة</button><button type="button" className={view === 'street' ? 'on' : ''} onClick={() => setView('street')}>تفصيلية</button></div>
+      <div className="segmented"><button type="button" className={view === 'map' ? 'on' : ''} onClick={() => setView('map')} data-testid="branch-map-toggle">المملكة</button><button type="button" className={view === 'street' ? 'on' : ''} onClick={() => setView('street')}>تفصيلية</button><button type="button" className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>قائمة</button></div>
       <button type="button" className={`near-me ${me ? 'on' : ''}`} onClick={locate} disabled={geo === 'busy'}>{geo === 'busy' ? 'جارٍ تحديد موقعك…' : me ? '◎ مرتبة حسب الأقرب' : '◎ الأقرب لي'}</button>
     </div>
     {geo === 'denied' && <small className="form-error">تعذّر الوصول لموقعك. فعّل إذن الموقع للمتصفح ثم حاول مجدداً.</small>}
-    {view === 'map' ? <SaudiMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : view === 'street' ? <BranchMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : <>
-      <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
-      <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(({ b, km }) => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span><span className="bo-meta">{km != null && <span className="branch-km">{fmtKm(km)}</span>}{b.code && <span className="branch-code">{b.code}</span>}</span></button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div>
-    </>}
+    <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
+    {q.trim() || view === 'list' ? <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(({ b, km }) => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span><span className="bo-meta">{km != null && <span className="branch-km">{fmtKm(km)}</span>}{b.code && <span className="branch-code">{b.code}</span>}</span></button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div> : view === 'street' ? <BranchMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : <SaudiMap branches={branches} scores={scores} onSelect={onChange} me={me}/>}
   </div>;
 }
 
