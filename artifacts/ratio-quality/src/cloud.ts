@@ -62,6 +62,7 @@ async function resolvePhoto(path: string): Promise<string> {
   return getDownloadURL(ref(storage!, path)).catch(() => '');
 }
 
+export const DEVICE_ID = (() => { try { let d = localStorage.getItem('rq-device'); if (!d) { d = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`; localStorage.setItem('rq-device', d); } return d; } catch { return 'unknown'; } })();
 export class ConflictError extends Error { constructor(public cloud: AnyDoc) { super('conflict'); } }
 /** Drafts are written with a precondition: only if the cloud copy is still the one this device last saw
  *  (expectedUpdatedAt). Transactions need a connection, so offline edits are never blind-written later. */
@@ -74,8 +75,9 @@ export async function pushDoc(store: string, value: AnyDoc, expectedUpdatedAt?: 
     await runTransaction(fs, async tx => {
       const snap = await tx.get(ref_);
       const cur = snap.exists() ? snap.data() as AnyDoc : null;
-      if (cur && expectedUpdatedAt && cur.updatedAt && cur.updatedAt > expectedUpdatedAt && cur.updatedAt !== value.updatedAt) throw new ConflictError({ ...cur, id: value.id });
-      tx.set(ref_, data);
+      // Only another device's newer write is a conflict; this device's own in-flight autosaves never are.
+      if (cur && expectedUpdatedAt && cur.updatedAt && cur.updatedAt > expectedUpdatedAt && cur._writer && cur._writer !== DEVICE_ID) throw new ConflictError({ ...cur, id: value.id });
+      tx.set(ref_, { ...data, _writer: DEVICE_ID });
     });
   } else await setDoc(ref_, data);
   return uploaded;

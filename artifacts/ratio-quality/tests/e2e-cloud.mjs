@@ -138,6 +138,14 @@ await step('offline: draft keeps working without a connection and syncs after', 
   const d = await fsGet(`inspections/${id2}`);
   assert.ok(d.fields, 'offline draft reached the cloud after reconnecting');
 });
+await step('rapid consecutive autosaves all reach the cloud (no self-conflict)', async () => {
+  await A.p.goto(APP + `/inspection/${id2}`); await A.p.waitForTimeout(800);
+  await A.p.locator('.heat').nth(3).click(); await A.p.getByTestId('answer-pass-4').click(); await A.p.waitForTimeout(350);
+  await A.p.getByTestId('answer-fail-5').click(); await A.p.getByTestId('input-observation-5').fill('سريع'); await A.p.waitForTimeout(4000);
+  const d = await fsGet(`inspections/${id2}`);
+  assert.equal(val(d.fields.answers.mapValue.fields['5'].mapValue.fields.value), 'fail');
+  assert.equal(await A.p.locator('.conflict').count(), 0, 'no false conflict on the same device');
+});
 await step('same draft edited on two devices: conflict shown, nothing lost', async () => {
   await B.p.goto(APP + '/'); await B.p.waitForSelector('.today', { timeout: 20000 }); await B.p.waitForTimeout(1500);
   await B.p.goto(APP + `/inspection/${id2}`); await B.p.waitForTimeout(1500);

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
-import { ConflictError, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
+import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
@@ -157,7 +157,7 @@ export async function syncAll() {
       const base = readSynced()[c.id];
       const li = l as unknown as Inspection | undefined, ci = c as unknown as Inspection;
       if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
-          && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt) {
+          && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt && (c as { _writer?: string })._writer !== DEVICE_ID) {
         // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
         saveConflict(ci);
         continue;
