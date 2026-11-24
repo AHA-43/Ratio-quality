@@ -29,6 +29,8 @@ const login = async (p, email) => { await p.goto(APP + '/'); await p.waitForSele
 const draw = async (p, sel) => { const c = p.locator(sel); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await p.mouse.move(b.x + 20, b.y + 40); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 100, { steps: 6 }); await p.mouse.move(b.x + 220, b.y + 40, { steps: 6 }); await p.mouse.up(); };
 
 const A = await newDevice();
+// Device A behaves like a phone on a mobile network: every request waits ~300 ms.
+await (await A.c.newCDPSession(A.p)).send('Network.emulateNetworkConditions', { offline: false, latency: 300, downloadThroughput: 1.5e6 / 8 * 8, uploadThroughput: 750e3 / 8 * 8 });
 let inspectionId; let photoLen = 0; let id2;
 await step('wrong password is rejected with a clear message', async () => {
   await A.p.goto(APP + '/'); await A.p.waitForSelector('.login-card');

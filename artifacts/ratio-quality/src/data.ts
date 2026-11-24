@@ -116,19 +116,37 @@ const conflictListeners = new Set<(id: string) => void>();
 export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };
 export function saveConflict(c: Inspection) { try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(c)); } catch { /* ignore */ } conflictListeners.forEach(f => f(c.id)); }
 export function clearConflict(id: string) { try { const c = JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); if (c?.updatedAt) markSynced(id, c.updatedAt); localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
+/* Per-document push queue: one write in flight per doc; while it runs, only the newest version waits (coalesced). */
+const inflight = new Map<string, Promise<void>>();
+const pending = new Map<string, { store: StoreName; value: { id: string } }>();
+function schedulePush(store: StoreName, value: { id: string }) {
+  const key = `${store}/${value.id}`;
+  pending.set(key, { store, value });
+  if (inflight.has(key)) return;
+  const run = async () => {
+    while (pending.has(key)) {
+      const job = pending.get(key)!; pending.delete(key);
+      try {
+        const uploaded = await pushDoc(job.store, job.value as never, readSynced()[job.value.id]);
+        markSynced(job.value.id, (job.value as { updatedAt?: string }).updatedAt);
+        if (job.store === 'inspections' && Object.keys(uploaded).length) {
+          // remember photo references locally (keep the local image data too)
+          const cur = await localRepository.list<Inspection>('inspections').then(all => all.find(x => x.id === job.value.id));
+          if (cur) { for (const ans of Object.values(cur.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id]; await localRepository.put('inspections', cur as never); }
+        }
+      } catch (e) {
+        if (e instanceof ConflictError) { saveConflict(e.cloud as unknown as Inspection); pending.delete(key); }
+        // offline / transient: the newest local version is pushed again by the next save or the reconnect sync
+      }
+    }
+  };
+  const p = run().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+}
 export async function put<T extends { id: string }>(store: StoreName, value: T) {
   await localRepository.put(store, value);
-  if (cloudEnabled && isSignedIn() && store !== 'settings') {
-    // Cloud mirroring never blocks or breaks local saving (offline-safe). Firestore queues writes itself.
-    pushDoc(store, value as never, readSynced()[value.id]).then(async uploaded => {
-      markSynced(value.id, (value as { updatedAt?: string }).updatedAt);
-      if (store === 'inspections' && Object.keys(uploaded).length) {
-        const insp = value as unknown as Inspection;
-        for (const ans of Object.values(insp.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id];
-        await localRepository.put(store, insp as never);
-      }
-    }).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); });
-  }
+  // Cloud mirroring never blocks or breaks local saving (offline-safe).
+  if (cloudEnabled && isSignedIn() && store !== 'settings') schedulePush(store, value);
 }
 export async function remove(store: StoreName, id: string) {
   await localRepository.remove(store, id);

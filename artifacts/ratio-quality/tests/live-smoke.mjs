@@ -31,9 +31,13 @@ await step('start draft and answer with photo', async () => {
   await p.waitForSelector('.evidence-item img'); await p.waitForTimeout(5000);
 });
 await step('draft and photo reached Firestore', async () => {
-  const d = await (await fetch(`${FS}/inspections/${id}`, { headers: H })).json();
-  assert.ok(d.fields, 'inspection missing in cloud');
-  const att = d.fields.answers.mapValue.fields['3'].mapValue.fields.attachments.arrayValue.values[0].mapValue.fields;
+  let d = {}, att;
+  for (let k = 0; k < 20; k++) {
+    d = await (await fetch(`${FS}/inspections/${id}`, { headers: H })).json();
+    att = d.fields?.answers?.mapValue?.fields?.['3']?.mapValue?.fields?.attachments?.arrayValue?.values?.[0]?.mapValue?.fields;
+    if (att?.storagePath) break; await new Promise(r => setTimeout(r, 1500));
+  }
+  assert.ok(d.fields, 'inspection missing in cloud'); assert.ok(att, 'item 3 with photo not in cloud after 30s');
   const path = att.storagePath?.stringValue; assert.match(path ?? '', /^photos\//);
   const ph = await (await fetch(`${FS}/${path}`, { headers: H })).json(); assert.match(ph.fields.data.stringValue, /^data:image\/jpeg/);
 });
