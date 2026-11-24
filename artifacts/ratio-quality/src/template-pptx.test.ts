@@ -13,7 +13,7 @@ const i: Inspection = { id: 't', status: 'finalized', workflow: 'approved', numb
 test('template deck: cover, summary, 2 dividers, 2 findings (with photo), action plan', async () => {
   const tpl = readFileSync(new URL('../public/templates/ratio-report-template.pptx', import.meta.url));
   const { blob, name } = await exportTemplatePptx(i, [{ id: 'a', title: '', description: 'عصا التبخير', branchName: '', questionId: 5, inspectionId: 't', responsible: 'مدير الفرع', dueDate: '2026-11-24', status: 'مفتوح', severity: 'Critical', recommendation: 'تنظيف' }], tpl.buffer.slice(tpl.byteOffset, tpl.byteOffset + tpl.byteLength));
-  assert.match(name, /قالب-ريشيو\.pptx$/);
+  assert.match(name, /Ratio-template\.pptx$/);
   const buf = Buffer.from(await blob.arrayBuffer());
   if (process.env.DUMP) writeFileSync(process.env.DUMP, buf);
   const zip = await JSZip.loadAsync(buf);

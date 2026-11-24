@@ -128,6 +128,6 @@ export async function exportTemplatePptx(i: Inspection, actions: ActionItem[], t
   const app = zip.file('docProps/app.xml'); if (app) zip.file('docProps/app.xml', (await app.async('string')).replace(/<Slides>\d+<\/Slides>/, `<Slides>${out.length}</Slides>`));
 
   const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation', compression: 'DEFLATE' });
-  const base = `${i.number ?? 'RQ'}_${(i.branchCode ?? i.branchName).replace(/[^\p{L}\p{N}.]+/gu, '-')}_${i.date.slice(0, 10)}`;
-  return { blob, name: `${base}_قالب-ريشيو.pptx` };
+  const base = `${i.number ?? 'RQ'}_${(i.branchCode ?? 'BRANCH').replace(/[^A-Za-z0-9.]+/g, '-')}_${i.date.slice(0, 10)}`;
+  return { blob, name: `${base}_Ratio-template.pptx` };
 }
