@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
-import { cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
+import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
@@ -41,6 +41,8 @@ export type Inspection = {
     branch?: { name: string; image?: string; at: string; declinedReason?: string };
   };
   previous?: { inspectionId: string; date: string; score: number | null; classification: string | null };
+  /** Documented correction of an approved report: a new revision linked to the locked original. */
+  amendmentOf?: string; amendmentReason?: string; revision?: number;
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
@@ -105,24 +107,60 @@ class DexieInspectionRepository implements InspectionRepository {
 
 export const localRepository: InspectionRepository = new DexieInspectionRepository();
 export const list = <T>(store: StoreName) => localRepository.list<T>(store);
+/* ---- sync bookkeeping for conflict detection: last updatedAt known to match the cloud ---- */
+const syncedKey = 'rq-synced';
+const readSynced = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(syncedKey) || '{}'); } catch { return {}; } };
+export function markSynced(id: string, at?: string) { if (!at) return; try { const m = readSynced(); m[id] = at; localStorage.setItem(syncedKey, JSON.stringify(m)); } catch { /* ignore */ } }
+export function getConflict(id: string): Inspection | null { try { return JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); } catch { return null; } }
+const conflictListeners = new Set<(id: string) => void>();
+export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };
+export function saveConflict(c: Inspection) { try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(c)); } catch { /* ignore */ } conflictListeners.forEach(f => f(c.id)); }
+export function clearConflict(id: string) { try { const c = JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); if (c?.updatedAt) markSynced(id, c.updatedAt); localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
+/* Per-document push queue: one write in flight per doc; while it runs, only the newest version waits (coalesced). */
+const inflight = new Map<string, Promise<void>>();
+const pending = new Map<string, { store: StoreName; value: { id: string } }>();
+function schedulePush(store: StoreName, value: { id: string }) {
+  const key = `${store}/${value.id}`;
+  pending.set(key, { store, value });
+  if (inflight.has(key)) return;
+  const run = async () => {
+    while (pending.has(key)) {
+      const job = pending.get(key)!; pending.delete(key);
+      try {
+        const uploaded = await pushDoc(job.store, job.value as never, readSynced()[job.value.id]);
+        markSynced(job.value.id, (job.value as { updatedAt?: string }).updatedAt);
+        if (job.store === 'inspections' && Object.keys(uploaded).length) {
+          // remember photo references locally (keep the local image data too)
+          const cur = await localRepository.list<Inspection>('inspections').then(all => all.find(x => x.id === job.value.id));
+          if (cur) { for (const ans of Object.values(cur.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id]; await localRepository.put('inspections', cur as never); }
+        }
+      } catch (e) {
+        if (e instanceof ConflictError) { saveConflict(e.cloud as unknown as Inspection); pending.delete(key); }
+        // offline / transient: the newest local version is pushed again by the next save or the reconnect sync
+      }
+    }
+  };
+  const p = run().finally(() => inflight.delete(key));
+  inflight.set(key, p);
+}
 export async function put<T extends { id: string }>(store: StoreName, value: T) {
   await localRepository.put(store, value);
-  if (cloudEnabled && isSignedIn() && store !== 'settings') {
-    // Cloud mirroring never blocks or breaks local saving (offline-safe). Firestore queues writes itself.
-    pushDoc(store, value as never).then(async uploaded => {
-      if (store === 'inspections' && Object.keys(uploaded).length) {
-        const insp = value as unknown as Inspection;
-        for (const ans of Object.values(insp.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id];
-        await localRepository.put(store, insp as never);
-      }
-    }).catch(() => {});
-  }
+  // Cloud mirroring never blocks or breaks local saving (offline-safe).
+  if (cloudEnabled && isSignedIn() && store !== 'settings') schedulePush(store, value);
 }
 export async function remove(store: StoreName, id: string) {
   await localRepository.remove(store, id);
   if (cloudEnabled && isSignedIn()) removeDoc(store, id).catch(() => {});
 }
 /** After sign-in: bring down anything missing/newer from the cloud, then push local-only items up. */
+/** Cloud copies carry photo references, never device-only videos: keep any media this device already has. */
+function keepLocalMedia(local: Inspection, cloud: Inspection) {
+  for (const [qid, ans] of Object.entries(cloud.answers ?? {})) {
+    const mine = local.answers?.[Number(qid)]?.attachments ?? [];
+    for (const a of ans.attachments ?? []) if (!a.data) { const m = mine.find(x => x.id === a.id); if (m?.data) a.data = m.data; }
+    for (const m of mine) if (m.type.startsWith('video/') && !(ans.attachments ?? []).some(a => a.id === m.id)) (ans.attachments ??= []).push(m);
+  }
+}
 export async function syncAll() {
   if (!cloudEnabled || !isSignedIn()) return;
   for (const store of ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const) {
@@ -134,13 +172,27 @@ export async function syncAll() {
     const cloudIds = new Set(cloud.map(x => x.id));
     for (const c of cloud) {
       const l = localById.get(c.id);
-      if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) await localRepository.put(store, c as never);
+      const base = readSynced()[c.id];
+      const li = l as unknown as Inspection | undefined, ci = c as unknown as Inspection;
+      if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
+          && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt && (c as { _writer?: string })._writer !== DEVICE_ID) {
+        // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
+        saveConflict(ci);
+        continue;
+      }
+      if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
+        if (l && store === 'inspections') keepLocalMedia(l as unknown as Inspection, c as unknown as Inspection);
+        markSynced(c.id, c.updatedAt);
+        await localRepository.put(store, c as never);
+      }
     }
     for (const l of local) {
       const c = cloud.find(x => x.id === l.id);
       // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
       if (store === 'branches') continue;
-      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) await pushDoc(store, l as never).catch(() => {});
+      if (getConflict(l.id)) continue;
+      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
+      else if (c?.updatedAt && c.updatedAt === l.updatedAt) markSynced(l.id, l.updatedAt);
     }
   }
 }

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { addDoc, collection, doc, getDoc, getDocs, runTransaction, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, cloudEnabled, fs } from './cloud';
-import type { Inspection } from './data';
+import type { Inspection, Question } from './data';
 
 export type Role = 'admin' | 'quality_manager' | 'inspector';
 export type Profile = { uid: string; email: string; name: string; role: Role; canApprove: boolean; active: boolean };
@@ -106,7 +106,8 @@ export { workflowLabel } from './labels';
 
 /* ---------- shared app configuration (config/app), editable by quality leads ---------- */
 export type RecipientList = { id: string; name: string; to: string[]; cc: string[]; branchId?: string };
-export type AppConfig = { photoRequiredOnFail: number[]; recipientLists: RecipientList[] };
+export type StandardsVersion = { version: number; ranges: Record<string, { min?: number; max?: number }>; criteria: Record<string, string> };
+export type AppConfig = { photoRequiredOnFail: number[]; recipientLists: RecipientList[]; standards?: StandardsVersion; standardsHistory?: { version: number; at: string; by: string; changes: string[] }[] };
 const EMPTY_CONFIG: AppConfig = { photoRequiredOnFail: [], recipientLists: [] };
 let config: AppConfig = (() => { try { return { ...EMPTY_CONFIG, ...JSON.parse(localStorage.getItem('rq-config') || '{}') }; } catch { return EMPTY_CONFIG; } })();
 const cfgListeners = new Set<(c: AppConfig) => void>();
@@ -132,3 +133,49 @@ export function useConfig() {
   return c;
 }
 export const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e.trim());
+
+/* ---------- report distribution history (who prepared/shared what, to whom) ---------- */
+export type MailEntry = { inspectionId: string; channel: 'email' | 'share' | 'download'; list?: string; to?: string[]; cc?: string[]; file?: string; by: string; uid: string; at: string };
+export async function logMail(e: Omit<MailEntry, 'by' | 'uid' | 'at'>) {
+  const entry: MailEntry = { ...e, by: current?.name || current?.email || 'local', uid: auth?.currentUser?.uid ?? 'local', at: new Date().toISOString() };
+  try { const k = `rq-mail-${e.inspectionId}`; const prev = JSON.parse(localStorage.getItem(k) || '[]'); localStorage.setItem(k, JSON.stringify([entry, ...prev].slice(0, 50))); } catch { /* ignore */ }
+  if (fs && auth?.currentUser) addDoc(collection(fs, 'mailLog'), JSON.parse(JSON.stringify(entry))).catch(() => {});
+}
+export async function listMail(inspectionId: string): Promise<MailEntry[]> {
+  let local: MailEntry[] = [];
+  try { local = JSON.parse(localStorage.getItem(`rq-mail-${inspectionId}`) || '[]'); } catch { /* ignore */ }
+  if (!fs || !auth?.currentUser) return local;
+  try {
+    const { query, where } = await import('firebase/firestore');
+    const snap = await getDocs(query(collection(fs, 'mailLog'), where('inspectionId', '==', inspectionId)));
+    const cloud = snap.docs.map(d => d.data() as MailEntry);
+    const keys = new Set(cloud.map(c => c.at + c.uid));
+    return [...cloud, ...local.filter(l => !keys.has(l.at + l.uid))].sort((a, b) => b.at.localeCompare(a.at));
+  } catch { return local; }
+}
+
+/* ---------- shared, versioned operating standards (measurement ranges / criteria) ---------- */
+export const checklistVersionLabel = (c: AppConfig) => `official-pdf-v1.${c.standards?.version ?? 0}`;
+export function applyStandards(qs: Question[], c: AppConfig): Question[] {
+  const st = c.standards; if (!st) return qs.map(q => ({ ...q }));
+  return qs.map(q => {
+    const r = st.ranges[q.id]; const crit = st.criteria[q.id];
+    return { ...q, ...(crit ? { criterion: crit } : {}), ...(q.measurement && r ? { measurement: { ...q.measurement, ...r } } : {}) };
+  });
+}
+export async function publishStandards(next: Question[], base: Question[]) {
+  const prev = config.standards ?? { version: 0, ranges: {}, criteria: {} };
+  const ranges: StandardsVersion['ranges'] = {}; const criteria: StandardsVersion['criteria'] = {}; const changes: string[] = [];
+  for (const q of next) {
+    const b = base.find(x => x.id === q.id)!;
+    if (q.measurement && (q.measurement.min !== b.measurement?.min || q.measurement.max !== b.measurement?.max)) ranges[q.id] = { min: q.measurement.min, max: q.measurement.max };
+    if (q.criterion !== b.criterion) criteria[q.id] = q.criterion;
+    const was = prev.ranges[q.id]; const now = ranges[q.id];
+    if (JSON.stringify(was ?? null) !== JSON.stringify(now ?? null)) changes.push(`#${q.id} النطاق: ${was ? `${was.min ?? '—'}–${was.max ?? '—'}` : 'افتراضي'} ← ${now ? `${now.min ?? '—'}–${now.max ?? '—'}` : 'افتراضي'}`);
+    if ((prev.criteria[q.id] ?? '') !== (criteria[q.id] ?? '')) changes.push(`#${q.id} نص المعيار`);
+  }
+  if (!changes.length) return null;
+  const version = prev.version + 1;
+  await saveConfig({ standards: { version, ranges, criteria }, standardsHistory: [{ version, at: new Date().toISOString(), by: current?.name || current?.email || 'local', changes }, ...(config.standardsHistory ?? [])].slice(0, 100) });
+  return version;
+}

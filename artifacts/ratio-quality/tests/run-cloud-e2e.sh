@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 OUTDIR="${OUT:-$(mktemp -d)}"; export OUT="$OUTDIR"
 npx vite build --mode emu --outDir "$OUTDIR/emu-dist" --emptyOutDir >/dev/null
+pkill -f "vite.js preview --mode emu" 2>/dev/null || true
 npx vite preview --mode emu --outDir "$OUTDIR/emu-dist" --port 4183 --strictPort >/dev/null 2>&1 &
 PREVIEW=$!; trap 'kill $PREVIEW 2>/dev/null || true' EXIT
 sleep 3

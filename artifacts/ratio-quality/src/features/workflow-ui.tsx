@@ -83,11 +83,24 @@ export function RecurringHint({ prev, questionId, answer, onConfirm }: { prev?: 
 }
 
 /* ---------- approval panel (report page) ---------- */
-export function ApprovalPanel({ inspection, save }: { inspection: Inspection; save: (i: Inspection) => Promise<void> }) {
+export function ApprovalPanel({ inspection, save, all = [], onAmend }: { inspection: Inspection; save: (i: Inspection) => Promise<void>; all?: Inspection[]; onAmend?: (copy: Inspection) => Promise<void> }) {
   const profile = useProfile();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const allowed = canApprove(profile);
+  const amendments = all.filter(x => x.amendmentOf === inspection.id);
+  const original = inspection.amendmentOf ? all.find(x => x.id === inspection.amendmentOf) : undefined;
+  const amend = async () => {
+    if (!profile || !onAmend) return;
+    const reason = window.prompt('سبب التصحيح (يُوثَّق ويظهر في التقرير):')?.trim();
+    if (!reason) return;
+    const rev = Math.max(0, ...amendments.map(a => a.revision ?? 1)) + 1;
+    const now = new Date().toISOString();
+    const copy: Inspection = { ...JSON.parse(JSON.stringify(inspection)), id: `${inspection.id}-r${rev}`, status: 'draft', workflow: undefined, amendmentOf: inspection.id, amendmentReason: reason, revision: rev,
+      number: inspection.number ? `${inspection.number.replace(/-R\d+$/, '')}-R${rev}` : undefined, approvedAt: undefined, approvedBy: undefined, snapshotHash: undefined, submittedAt: undefined, finalizedAt: undefined,
+      returnReason: undefined, signatures: {}, createdAt: now, updatedAt: now };
+    await onAmend(copy); await audit('inspection.amend', 'inspections', inspection.id, { revision: rev, reason, newId: copy.id });
+  };
   const state = inspection.workflow ?? 'submitted';
   const approve = async () => {
     if (!profile) return;
@@ -116,6 +129,9 @@ export function ApprovalPanel({ inspection, save }: { inspection: Inspection; sa
     {state !== 'approved' && allowed && <div className="approval-actions"><button className="button button-primary" disabled={busy} onClick={approve}>اعتماد التقرير</button><button className="button button-outline" disabled={busy} onClick={sendBack}>إرجاع للتصحيح</button></div>}
     {state !== 'approved' && !allowed && <small>بانتظار اعتماد مدير الجودة أو مفتش مخوّل بالاعتماد.</small>}
     {state === 'approved' && <small>النتائج مقفلة. أي تعديل يتطلب إجراء تصحيح موثّق.</small>}
+    {state === 'approved' && allowed && onAmend && !amendments.some(a => a.workflow !== 'approved') && <button className="button button-outline" onClick={amend}>بدء تصحيح موثّق</button>}
+    {amendments.length > 0 && <div className="amend-list">{amendments.map(a => <a key={a.id} href={a.status === 'draft' ? `/inspection/${a.id}` : `/reports/${a.id}`}>النسخة التصحيحية {a.revision} · {a.amendmentReason} · {workflowLabel(a)}</a>)}</div>}
+    {original && <small className="amend-of">تصحيح للتقرير المعتمد {original.number ?? ''} — السبب: {inspection.amendmentReason}</small>}
     {msg && <small className="ok">{msg}</small>}
   </div>;
 }

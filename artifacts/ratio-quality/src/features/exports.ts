@@ -8,7 +8,7 @@ const SEV_AR = { Critical: 'حرج', Major: 'رئيسي', Minor: 'ثانوي' } 
 const NAVY = '07014F', MILK = 'F4F1EB', CORN = '7584F7';
 const failed = (i: Inspection, q: Question) => { const a = i.answers[q.id]; return Boolean(a && (a.value === 'fail' || a.initialValue === 'fail')); };
 const resultAr = (v: unknown) => v === 'pass' ? 'مطابق' : v === 'fail' ? 'غير مطابق' : v === 'na' ? 'لا ينطبق' : 'بدون إجابة';
-const fileBase = (i: Inspection) => `${i.number ?? 'RQ'}_${(i.branchCode ?? i.branchName).replace(/[^\p{L}\p{N}.]+/gu, '-')}_${i.date.slice(0, 10)}`;
+const fileBase = (i: Inspection) => `${i.number ?? 'RQ'}_${(i.branchCode ?? 'BRANCH').replace(/[^A-Za-z0-9.]+/g, '-')}_${i.date.slice(0, 10)}`;
 
 async function toDataUrl(src: string): Promise<string | null> {
   if (!src) return null;
@@ -152,7 +152,7 @@ export async function exportPptx(i: Inspection, actions: ActionItem[]): Promise<
       T(sl, `الملاحظة\n${a?.observation || '—'}`, { x: 4.7, y: 1.6, w: 4.8, h: 1.55, fontSize: 12, valign: 'top' });
       sl.addShape(pptx.ShapeType.roundRect, { x: 4.6, y: 3.35, w: 5.0, h: 1.65, fill: { color: 'EEF0FE' }, rectRadius: 0.08 });
       T(sl, `التوصية\n${a?.recommendation || '—'}`, { x: 4.7, y: 3.4, w: 4.8, h: 1.55, fontSize: 12, valign: 'top' });
-      const imgs = (a?.attachments ?? []).slice(0, 2);
+      const imgs = (a?.attachments ?? []).filter(x => !x.type.startsWith('video/')).slice(0, 2);
       let y = 1.55;
       for (const img of imgs) { const data = await toDataUrl(img.data); if (data) { sl.addImage({ data, x: 0.4, y, w: 4.0, h: 1.65, sizing: { type: 'contain', w: 4.0, h: 1.65 } }); y += 1.8; } }
       if (!imgs.length) { sl.addShape(pptx.ShapeType.roundRect, { x: 0.4, y: 1.55, w: 4.0, h: 3.45, fill: { color: 'F6F5F2' }, line: { color: 'C9CCF4', dashType: 'dash' }, rectRadius: 0.08 }); T(sl, 'لا توجد صورة مرفقة', { x: 0.4, y: 3.0, w: 4.0, h: 0.4, fontSize: 11, color: '9A9AC4', align: 'center' }); }

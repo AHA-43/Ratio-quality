@@ -80,6 +80,13 @@ service cloud.firestore {
       allow write: if isLead();
     }
 
+    // Report distribution history: append-only.
+    match /mailLog/{id} {
+      allow read: if active();
+      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // Append-only audit trail.
     match /audit/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;

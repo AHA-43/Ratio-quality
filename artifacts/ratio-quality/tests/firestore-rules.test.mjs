@@ -93,3 +93,11 @@ test('photos: owner-tagged images only, immutable', async () => {
   await assertFails(updateDoc(doc(as('insp'), 'photos/p1'), { data: 'data:image/png;base64,BBBB' }));
   await assertSucceeds(getDoc(doc(as('insp2'), 'photos/p1')));
 });
+test('mail log is append-only and tagged with the sender', async () => {
+  await assertSucceeds(addDoc(collection(as('insp'), 'mailLog'), { uid: 'insp', inspectionId: 'sub1', channel: 'email' }));
+  await assertFails(addDoc(collection(as('insp'), 'mailLog'), { uid: 'qm', inspectionId: 'sub1' }));
+});
+test('amendment of an approved report is a new draft; the original stays locked', async () => {
+  await assertSucceeds(setDoc(doc(as('qm'), 'inspections/app1-r1'), { status: 'draft', amendmentOf: 'app1', revision: 1 }));
+  await assertFails(updateDoc(doc(as('qm'), 'inspections/app1'), { amended: true }));
+});

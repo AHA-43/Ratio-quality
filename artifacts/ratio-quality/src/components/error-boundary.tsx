@@ -39,12 +39,11 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-gray-50 p-6">
       <div className="max-w-lg w-full text-center">
-        <h1 className="text-xl font-semibold text-gray-900">
-          Something went wrong
+        <h1 className="text-xl font-semibold text-gray-900" dir="rtl">
+          حدث خطأ غير متوقع
         </h1>
-        <p className="mt-2 text-sm text-gray-600">
-          This part of the app hit an error. The rest of the app is still
-          running.
+        <p className="mt-2 text-sm text-gray-600" dir="rtl">
+          بياناتك محفوظة على الجهاز ولم تُفقد. اضغط «إعادة المحاولة» أو ارجع للصفحة الرئيسية.
         </p>
         {/* Dev only: messages can carry API responses and other internals. */}
         {import.meta.env.DEV ? (
@@ -57,7 +56,7 @@ function DefaultFallback({ error, resetError }: ErrorFallbackProps) {
           onClick={resetError}
           className="mt-4 rounded bg-gray-900 px-4 py-2 text-sm text-white hover:bg-gray-700"
         >
-          Try again
+          إعادة المحاولة
         </button>
       </div>
     </div>
