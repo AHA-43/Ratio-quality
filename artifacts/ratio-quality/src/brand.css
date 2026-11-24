@@ -601,7 +601,7 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
 body.runner-focus .bottom-nav { display: none; }
 body.runner-focus .runner-page { padding-bottom: 200px; }
 body.runner-focus .field-toast { bottom: 188px; }
-@media (min-width: 768px) { .action-bar { display: none; } }
+@media (min-width: 768px) and (min-height: 521px) { .action-bar { display: none; } }
 .hud-auto + .hud-auto { margin-inline-start: 6px; }
 .action-bar.compact .ab-answers { display: none; } /* keyboard is up: keep only the tools row */
 .action-bar.compact { padding-top: 8px; }
@@ -804,3 +804,43 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .bottom-nav .more-tab { min-width: 56px; min-height: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 4px 2px; color: #616185; font-size: 10px; position: relative; }
 .bottom-nav .more-tab.selected { color: var(--navy); font-weight: 700; } .bottom-nav .more-tab.selected .nav-ico::before { opacity: 1; transform: none; }
 .is-x { inset-inline-start: auto !important; inset-inline-end: 14px; }
+
+/* ===== Adaptive layout: phone → tablet → laptop → wide screen ===== */
+.rail-more-btn { display: none; background: none; border: 0; font: inherit; cursor: pointer; }
+@media (min-width: 768px) and (max-width: 1180px) {
+  .rail-more-link { display: none !important; }
+  .rail-more-btn { display: flex; }
+  .section-sidebar { display: none !important; }            /* the section progress bar above the question replaces it */
+  .inspection-layout { grid-template-columns: 1fr !important; }
+  .page-content, .question-column { max-width: 860px; margin-inline: auto; }
+  .field-hud { flex-wrap: wrap; }
+}
+/* touch devices of any size get phone-sized hit areas */
+@media (pointer: coarse) {
+  .topbar .icon-button, .display-menu .icon-button, .search-btn { min-width: 44px; min-height: 44px; }
+  .text-link, .back-link { display: inline-flex; align-items: center; min-height: 44px; }
+  .segmented button, .filter-chip, .pr-tabs button, .sp-seg, .button, a.button, button.button { min-height: 44px; }
+  .icon-button { min-width: 44px; min-height: 44px; }
+  select, input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { min-height: 44px; }
+}
+/* wide screens: use the room instead of leaving gutters */
+@media (min-width: 1500px) {
+  .page-wrap { width: min(1440px, 100%); padding-inline: 48px; }
+  .ex-kpis { grid-template-columns: repeat(4, 1fr); } .metric-grid { grid-template-columns: repeat(4, 1fr); }
+  .pr-kpis { grid-template-columns: repeat(4, 1fr); }
+}
+/* short landscape phones/tablets: keep the answer bar from covering the question */
+@media (max-height: 520px) and (orientation: landscape) {
+  .action-bar { padding-block: 6px; } .ab-btn { min-height: 48px; flex-direction: row; gap: 8px; } .ab-tools button { min-height: 40px; }
+  body.runner-focus .runner-page { padding-bottom: 150px; }
+}
+.rail-more-btn span { font-size: 10px; }
+/* landscape phone: no rail, one-row answer bar, menu via the top-bar button */
+@media (max-height: 520px) and (orientation: landscape) {
+  .side-rail { display: none !important; } .main-column { margin: 0 !important; }
+  .menu-toggle { display: grid !important; } .topbar { height: 48px; }
+  .action-bar { display: flex; gap: 8px; align-items: stretch; padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
+  .ab-answers { flex: 1.35; } .ab-tools { flex: 1; } .ab-btn { min-height: 46px; flex-direction: row; gap: 6px; } .ab-btn b { font-size: 12px; } .ab-tools button { min-height: 46px; font-size: 10.5px; padding: 0 6px; }
+  body.runner-focus .runner-page { padding-bottom: 76px; } body.runner-focus .field-toast { bottom: 70px; }
+}
+@media (max-height: 520px) and (orientation: landscape) { .runner-intro h1, .runner-intro p { display: none; } .runner-intro { margin-bottom: 4px; } .page-wrap { padding-top: 12px; } }

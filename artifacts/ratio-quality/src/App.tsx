@@ -153,7 +153,7 @@ function AppShell({ children }: { children: ReactNode }) {
       <Link href="/" className="brand-lockup" aria-label="ريشيو للجودة"><img src="/brand/logo-ar-white.png" alt="ريشيو"/><span className="brand-sub">إدارة الجودة</span></Link>
       <div className="rail-label">مساحة العمل</div>
       {nav.map(item => <Link key={item.href} href={item.href} data-testid={`nav-${item.href === '/' ? 'home' : item.href.slice(1)}`} className={`rail-link ${location === item.href ? 'active' : ''}`}><item.icon size={18}/><span>{item.label}</span></Link>)}
-      <div className="rail-label">المزيد</div>{moreNav.map(item => <Link key={item.href} href={item.href} className={`rail-link ${location === item.href ? 'active' : ''}`}><span>{item.label}</span></Link>)}<div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>{cloudEnabled ? 'تُحفظ بياناتك على الجهاز وتُزامن مع حسابك عند توفر الإنترنت' : 'بياناتك محفوظة على هذا الجهاز فقط'}</span></div><span className="rail-version">ريشيو للجودة · 1.0</span></div>
+      <div className="rail-label">المزيد</div>{moreNav.map(item => <Link key={item.href} href={item.href} className={`rail-link rail-more-link ${location === item.href ? 'active' : ''}`}><span>{item.label}</span></Link>)}<button type="button" className="rail-link rail-more-btn" onClick={() => setMobileMenu(true)} aria-haspopup="dialog" data-testid="rail-more"><MoreHorizontal size={18}/><span>المزيد</span></button><div className="rail-bottom"><div className="device-note"><ShieldCheck size={18}/><span>{cloudEnabled ? 'تُحفظ بياناتك على الجهاز وتُزامن مع حسابك عند توفر الإنترنت' : 'بياناتك محفوظة على هذا الجهاز فقط'}</span></div><span className="rail-version">ريشيو للجودة · 1.0</span></div>
     </aside>
     <div className="main-column">
       <header className="topbar">
@@ -530,7 +530,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     if (prev || branchOpenActions.length) setBriefOpen(true);
   }, [inspection?.id]);
   const closeBrief = () => { setBriefOpen(false); try { sessionStorage.setItem(`rq-brief-${id}`, '1'); } catch { /* ignore */ } };
-  const isPhone = useMedia('(max-width: 767px)');
+  const isPhone = useMedia('(max-width: 767px), (max-height: 520px) and (orientation: landscape)');
   const kbOpen = useKeyboardOpen();
   const fieldMode = Boolean(inspection) && inspection?.status === 'draft' && !review;
   useWakeLock(fieldMode);
