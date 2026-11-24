@@ -121,6 +121,11 @@ jobs:
           echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
           gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
           TOKEN=$(gcloud auth print-access-token)
+          # purge leftovers of earlier smoke runs (cancelled runs never reach their own cleanup)
+          FS0="https://firestore.googleapis.com/v1/projects/ratio-quality/databases/(default)/documents"
+          q() { curl -s -X POST "$FS0:runQuery" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"structuredQuery\":{\"from\":[{\"collectionId\":\"$1\"}],\"where\":{\"compositeFilter\":{\"op\":\"AND\",\"filters\":[{\"fieldFilter\":{\"field\":{\"fieldPath\":\"$2\"},\"op\":\"GREATER_THAN_OR_EQUAL\",\"value\":{\"stringValue\":\"ci-smoke-\"}}},{\"fieldFilter\":{\"field\":{\"fieldPath\":\"$2\"},\"op\":\"LESS_THAN\",\"value\":{\"stringValue\":\"ci-smoke.\"}}}]}}}}" ; }
+          q inspections inspector | jq -r '.[].document.name // empty' | while read -r N; do curl -s -X DELETE "https://firestore.googleapis.com/v1/$N" -H "Authorization: Bearer $TOKEN" >/dev/null; done
+          q users email | jq -r '.[].document.name // empty' | while read -r N; do OLD=${N##*/}; curl -s -X DELETE "https://firestore.googleapis.com/v1/$N" -H "Authorization: Bearer $TOKEN" >/dev/null; curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts:delete" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"localId\":\"$OLD\"}" >/dev/null; done
           EMAIL="ci-smoke-${GITHUB_RUN_ID}@example.com"; PW=$(openssl rand -base64 18)
           UID_=$(curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
             -d "$(jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p,emailVerified:true}')" | jq -r .localId)
@@ -138,6 +143,7 @@ jobs:
               | jq -r '.[].document.name // empty' | while read -r N; do curl -s -X DELETE "https://firestore.googleapis.com/v1/$N" -H "Authorization: Bearer $TOKEN" >/dev/null; done
           done
           [ -n "$IID" ] && curl -s -X DELETE "$FS/inspections/$IID" -H "Authorization: Bearer $TOKEN" >/dev/null
+          q inspections inspector | jq -r '.[].document.name // empty' | while read -r N; do curl -s -X DELETE "https://firestore.googleapis.com/v1/$N" -H "Authorization: Bearer $TOKEN" >/dev/null; done
           curl -s -X DELETE "$FS/users/$UID_" -H "Authorization: Bearer $TOKEN" >/dev/null
           curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts:delete" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "{\"localId\":\"$UID_\"}" >/dev/null
           echo "temporary account and its data removed"
