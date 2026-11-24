@@ -15,6 +15,9 @@ import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
 import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
+import { BranchMap, useMyPosition, type BranchScore } from './features/BranchMap';
+import { SaudiMap } from './features/SaudiMap';
+import { branchPos, distanceKm, fmtKm } from './features/geo';
 import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
@@ -248,17 +251,29 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
 }
 
 const normAr = (v: string) => v.toLowerCase().replace(/[\u064B-\u0652]/g, '').replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-function BranchPicker({ branches, value, onChange }: { branches: Branch[]; value: string; onChange: (id: string) => void }) {
+function BranchPicker({ branches, value, onChange, scores = {} }: { branches: Branch[]; value: string; onChange: (id: string) => void; scores?: BranchScore }) {
   const [q, setQ] = useState('');
+  const [view, setView] = useState<'list' | 'map' | 'street'>('list');
+  const { pos: me, state: geo, locate } = useMyPosition();
   const selected = branches.find(b => b.id === value);
   const list = useMemo(() => {
     const n = normAr(q.trim());
-    return branches.filter(b => !n || normAr(b.name).includes(n) || (b.code ?? '').toLowerCase().includes(n)).slice(0, 80);
-  }, [q, branches]);
+    const rows = branches.filter(b => !n || normAr(b.name).includes(n) || (b.code ?? '').toLowerCase().includes(n))
+      .map(b => { const p = branchPos(b.id, b.name); return { b, km: me && p ? distanceKm(me, p) : null }; });
+    if (me) rows.sort((x, y) => (x.km ?? 1e9) - (y.km ?? 1e9));
+    return rows.slice(0, 80);
+  }, [q, branches, me]);
   if (selected) return <div className="branch-selected" data-testid="branch-selected"><div><b>{selected.name}</b>{selected.code && <span className="branch-code">{selected.code}</span>}</div><button type="button" onClick={() => { onChange(''); setQ(''); }}>تغيير</button></div>;
   return <div className="branch-picker">
-    <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
-    <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(b => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span>{b.code && <span className="branch-code">{b.code}</span>}</button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div>
+    <div className="picker-tools">
+      <div className="segmented"><button type="button" className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}>قائمة</button><button type="button" className={view === 'map' ? 'on' : ''} onClick={() => setView('map')} data-testid="branch-map-toggle">المملكة</button><button type="button" className={view === 'street' ? 'on' : ''} onClick={() => setView('street')}>تفصيلية</button></div>
+      <button type="button" className={`near-me ${me ? 'on' : ''}`} onClick={locate} disabled={geo === 'busy'}>{geo === 'busy' ? 'جارٍ تحديد موقعك…' : me ? '◎ مرتبة حسب الأقرب' : '◎ الأقرب لي'}</button>
+    </div>
+    {geo === 'denied' && <small className="form-error">تعذّر الوصول لموقعك. فعّل إذن الموقع للمتصفح ثم حاول مجدداً.</small>}
+    {view === 'map' ? <SaudiMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : view === 'street' ? <BranchMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : <>
+      <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
+      <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(({ b, km }) => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span><span className="bo-meta">{km != null && <span className="branch-km">{fmtKm(km)}</span>}{b.code && <span className="branch-code">{b.code}</span>}</span></button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div>
+    </>}
   </div>;
 }
 
@@ -278,6 +293,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const sharedCfg = useConfig();
   useEffect(() => { setQuestions(applyStandards(QUESTIONS, sharedCfg)); }, [sharedCfg]);
   const activeBranches = data.branches.filter(b => !b.archived);
+  const branchScores = useMemo<BranchScore>(() => { const out: BranchScore = {}; for (const i of [...data.inspections].filter(x => x.status === 'finalized').sort((x, y) => x.date.localeCompare(y.date))) { const r = calculateScore(i.questionSnapshot, i.answers); out[i.branchId] = { score: r.score, cls: r.classification }; } return out; }, [data.inspections]);
   const start = async (values: InspectionStartValues) => {
     setError('');
     const branch = activeBranches.find(b => b.id === branchId)!;
@@ -304,7 +320,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   };
   return <div className="page-content narrow-page"><Link href="/" className="back-link"><ArrowRight size={16}/> الرئيسية</Link><PageTitle eyebrow="زيارة جديدة" title="بيانات الجولة" detail="اختر الفرع وتأكد من بيانات الزيارة، ثم ابدأ الفحص. تُحفظ كل إجابة تلقائياً."/>
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(start)}><div className="form-grid">
-      <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
+      <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} scores={branchScores} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
       <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" {...form.register('date')} data-testid="input-inspection-date"/></label>

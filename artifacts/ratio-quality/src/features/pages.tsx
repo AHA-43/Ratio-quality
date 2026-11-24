@@ -5,6 +5,8 @@ import { list, newId, put, QUESTIONS } from '../data';
 import { calculateScore } from '../scoring';
 import { audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
 import { cloudEnabled } from '../cloud';
+import { type BranchScore } from './BranchMap';
+import { SaudiMap } from './SaudiMap';
 
 export type AppData = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[]; refresh: () => Promise<void> };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -294,6 +296,7 @@ export function BranchesPage({ data }: { data: AppData }) {
   }).sort((x, y) => sort === 'name' ? x.b.name.localeCompare(y.b.name, 'ar') : sort === 'due' ? (y.daysSince ?? 9999) - (x.daysSince ?? 9999) : (x.last?.score ?? 101) - (y.last?.score ?? 101));
   return <div className="page-content">
     <Title eyebrow="الفروع" title="أداء الفروع" detail={`${rows.length} فرعاً فعّالاً · رتّب لترى الأضعف أداءً أو الأطول بلا زيارة.`}/>
+    <SaudiMap branches={data.branches.filter(b => !b.archived)} scores={Object.fromEntries(rows.map(r => [r.b.id, { score: r.last?.score ?? null, cls: r.last?.classification ?? null }])) as BranchScore} onSelect={id => { window.location.assign(`/branches/${id}`); }}/>
     <div className="branch-tools"><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالاسم أو الكود"/>
       <div className="segmented">{([['score', 'الأضعف أولاً'], ['due', 'الأطول بلا زيارة'], ['name', 'أبجدياً']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}</div></div>
     <div className="branch-grid">{rows.slice(0, 150).map(r => <Link key={r.b.id} href={`/branches/${r.b.id}`} className="branch-tile">
