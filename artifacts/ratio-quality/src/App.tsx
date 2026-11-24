@@ -13,17 +13,17 @@ import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, Check
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
-import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, publishStandards, useConfig, useProfile, workflowLabel } from './session';
+import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
 import { BranchMap, useMyPosition, type BranchScore } from './features/BranchMap';
 import { SaudiMap } from './features/SaudiMap';
 import { branchPos, distanceKm, fmtKm } from './features/geo';
 import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
-import { CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
+import { AskName, CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -98,6 +98,7 @@ function AppShell({ children }: { children: ReactNode }) {
         <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? 'متصل · تتم المزامنة' : 'دون اتصال · الحفظ على الجهاز'}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
+      <AskName/>
       <main className="page-wrap">{children}</main>
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><span className="nav-ico"><n.icon size={22}/></span><span>{n.label}</span></Link>)}</nav>
     </div>
@@ -152,7 +153,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const returned = drafts.filter(i => i.workflow === 'returned').length;
   return <div className="page-content">
     <div className="today">
-      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link></div>
+      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name && !looksAutoNamed(profile) ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link></div>
       {latestDraft ? <Link href={`/inspection/${latestDraft.id}`} className="continue-card"><span className="ring" style={{ ['--p' as string]: draftPct }}><b>{draftPct}%</b></span><span><small>{latestDraft.workflow === 'returned' ? 'أُعيدت للتصحيح' : 'زيارة لم تكتمل'}</small><h2>{latestDraft.branchName}</h2><span className="cta">أكمل من حيث توقفت ←</span></span></Link>
         : <Link href="/inspection/new" className="continue-card"><span className="ring" style={{ ['--p' as string]: 0 }}><b>+</b></span><span><small>لا توجد زيارة مفتوحة</small><h2>ابدأ زيارة جودة</h2><span className="cta">اختر الفرع وابدأ الفحص ←</span></span></Link>}
       <div className="attention">
@@ -185,18 +186,39 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
     <div className="footnote"><Info size={15}/> لا توجد بيانات تجريبية للزيارات. الفروع الثلاثة المبدئية موسومة كأمثلة ويمكن تعديلها.</div>
   </div>;
 }
-function InspectionRow({ inspection }: { inspection: Inspection }) {
+function InspectionRow({ inspection, onDelete }: { inspection: Inspection; onDelete?: (i: Inspection) => void }) {
   const score = calculateScore(inspection.questionSnapshot, inspection.answers);
   const href = inspection.status === 'finalized' ? `/reports/${inspection.id}` : `/inspection/${inspection.id}`;
-  return <Link href={href} className="visit-row" data-testid={`visit-row-${inspection.id}`}><span className="branch-symbol"><Store size={18}/></span><span className="visit-info"><b>{inspection.branchName || 'فرع غير محدد'}</b><small>{inspection.type} · {inspection.date}</small></span><span className={`wf-pill ${inspection.workflow ?? ''}`}>{inspection.number ? `${inspection.number} · ` : ''}{workflowLabel(inspection)}</span><span className={`visit-score tone-${score.classification === 'ممتاز' ? 'good' : score.classification === 'جيد' ? 'ok' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification ? 'bad' : 'none'}`}>{score.score === null ? <StatusPill tone={inspection.status === 'draft' ? 'amber' : 'neutral'}>{inspection.status === 'draft' ? 'مسودة' : 'غير مكتمل'}</StatusPill> : <><b>{score.score}%</b><small>{score.classification}</small></>}</span><ChevronLeft className="visit-chevron" size={16}/></Link>;
+  const answered = Object.values(inspection.answers).filter(a => a.value != null).length;
+  const total = inspection.questionSnapshot.length;
+  const isDraft = inspection.status === 'draft';
+  const tone = score.classification === 'ممتاز' ? 'good' : score.classification === 'جيد' ? 'ok' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification ? 'bad' : 'none';
+  return <div className="visit-row-wrap">
+    <Link href={href} className="visit-row" data-testid={`visit-row-${inspection.id}`}>
+      <span className="branch-symbol"><Store size={18}/></span>
+      <span className="visit-info"><b>{inspection.branchName || 'فرع غير محدد'}</b><small>{inspection.date.slice(0, 16)} · {inspection.inspector}</small>
+        <small className="visit-state">{inspection.number ? `${inspection.number} · ` : ''}{workflowLabel(inspection)}</small></span>
+      {isDraft
+        ? <span className="visit-progress" aria-label={`أُجيب ${answered} من ${total}`}><b>{answered}/{total}</b><i><u style={{ width: `${total ? answered / total * 100 : 0}%` }}/></i></span>
+        : <span className={`visit-score tone-${tone}`}><b>{score.score ?? '—'}%</b><small>{score.classification}</small></span>}
+      <ChevronLeft className="visit-chevron" size={16}/>
+    </Link>
+    {isDraft && onDelete && <button type="button" className="row-delete" aria-label="حذف المسودة" onClick={() => onDelete(inspection)}>حذف</button>}
+  </div>;
 }
 
 function VisitsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
+  const [showFilters, setShowFilters] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('الكل');
   const [branchId, setBranchId] = useState('الكل');
   const [visitDate, setVisitDate] = useState('');
   const [classification, setClassification] = useState('الكل');
+  const activeFilters = [branchId !== 'الكل', Boolean(visitDate), classification !== 'الكل'].filter(Boolean).length;
+  const removeDraft = async (i: Inspection) => {
+    if (!window.confirm(`حذف مسودة «${i.branchName}» (${i.date.slice(0, 10)})؟ لا يمكن التراجع.`)) return;
+    await remove('inspections', i.id); await data.refresh();
+  };
   const normalizedQuery = query.trim().toLocaleLowerCase('ar');
   const filtered = data.inspections.filter(i => {
     const score = calculateScore(i.questionSnapshot, i.answers);
@@ -208,13 +230,13 @@ function VisitsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
       && (classification === 'الكل' || score.classification === classification);
   });
   return <div className="page-content"><PageTitle eyebrow="سجل الزيارات" title="الزيارات" detail="ابحث عن زيارة، استكمل مسودة، أو افتح تقريراً." action={<Link href="/inspection/new" className="button button-primary"><Plus size={17}/> زيارة جديدة</Link>}/>
-    <Card><div className="toolbar"><label className="search-field"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث بالفرع أو المفتش…" data-testid="input-visit-search"/></label><div className="segmented">{['الكل','مسودات','مكتملة'].map(x => <button key={x} className={filter === x ? 'on' : ''} onClick={() => setFilter(x)} data-testid={`filter-${x}`}>{x}</button>)}</div></div>
-      <div className="history-filters">
+    <Card><div className="toolbar"><label className="search-field"><Search size={17}/><input value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث بالفرع أو المفتش…" data-testid="input-visit-search"/></label><div className="segmented">{['الكل','مسودات','مكتملة'].map(x => <button key={x} className={filter === x ? 'on' : ''} onClick={() => setFilter(x)} data-testid={`filter-${x}`}>{x}</button>)}</div><button type="button" className={`filter-toggle ${showFilters || activeFilters ? 'on' : ''}`} onClick={() => setShowFilters(v => !v)} aria-expanded={showFilters}>تصفية{activeFilters ? <b>{activeFilters}</b> : null}</button></div>
+      {showFilters && <div className="history-filters">
         <label className="field"><span>الفرع</span><select value={branchId} onChange={e => setBranchId(e.target.value)} data-testid="filter-branch"><option value="الكل">كل الفروع</option>{data.branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
         <label className="field"><span>التاريخ</span><input type="date" value={visitDate} onChange={e => setVisitDate(e.target.value)} data-testid="filter-date"/></label>
         <label className="field"><span>التصنيف</span><select value={classification} onChange={e => setClassification(e.target.value)} data-testid="filter-classification"><option>الكل</option><option>ممتاز</option><option>جيد</option><option>يحتاج تحسين</option><option>غير مقبول</option></select></label>
-      </div>
-      {!data.ready ? <div className="skeleton-list"><i/><i/><i/></div> : filtered.length ? <div className="visit-list">{filtered.map(i => <InspectionRow key={i.id} inspection={i}/>)}</div> : <EmptyState title={query ? 'لا توجد نتائج مطابقة' : 'لا توجد زيارات بعد'} text={query ? 'جرّب البحث بكلمة أخرى أو غيّر عامل التصفية.' : 'ابدأ أول زيارة ميدانية من زر «زيارة جديدة».'} action={!query && <Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/>}
+      </div>}
+      {!data.ready ? <div className="skeleton-list"><i/><i/><i/></div> : filtered.length ? <div className="visit-list">{filtered.map(i => <InspectionRow key={i.id} inspection={i} onDelete={removeDraft}/>)}</div> : <EmptyState title={query ? 'لا توجد نتائج مطابقة' : 'لا توجد زيارات بعد'} text={query ? 'جرّب البحث بكلمة أخرى أو غيّر عامل التصفية.' : 'ابدأ أول زيارة ميدانية من زر «زيارة جديدة».'} action={!query && <Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/>}
     </Card></div>;
 }
 

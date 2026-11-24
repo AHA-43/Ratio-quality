@@ -24,7 +24,7 @@ const qmUid = await signUp('manager@test.local');
 await fetch(`${FS}/users/${qmUid}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { email: { stringValue: 'manager@test.local' }, name: { stringValue: 'مدير الجودة' }, role: { stringValue: 'quality_manager' }, canApprove: { booleanValue: true }, active: { booleanValue: true } } }) });
 
 const browser = await chromium.launch();
-const newDevice = async () => { const c = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true }); await c.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); } catch {} }); const p = await c.newPage(); const errs = []; const logs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => logs.push(m.text().slice(0, 200))); return { c, p, errs, logs }; };
+const newDevice = async () => { const c = await browser.newContext({ viewport: { width: 390, height: 844 }, acceptDownloads: true }); await c.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} }); const p = await c.newPage(); const errs = []; const logs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', m => logs.push(m.text().slice(0, 200))); return { c, p, errs, logs }; };
 const login = async (p, email) => { await p.goto(APP + '/'); await p.waitForSelector('.login-card'); await p.locator('input[type=email]').fill(email); await p.locator('input[type=password]').fill('Test-pass-123'); await p.getByRole('button', { name: 'دخول' }).click(); await p.waitForSelector('.today', { timeout: 20000 }); };
 const draw = async (p, sel) => { const c = p.locator(sel); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await p.mouse.move(b.x + 20, b.y + 40); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 100, { steps: 6 }); await p.mouse.move(b.x + 220, b.y + 40, { steps: 6 }); await p.mouse.up(); };
 
@@ -162,6 +162,22 @@ await step('same draft edited on two devices: conflict shown, nothing lost', asy
   await B.p.locator('.conflict-row button').nth(1).click();
   await B.p.getByRole('button', { name: 'اعتماد الدمج' }).click(); await B.p.waitForTimeout(800);
   assert.equal(await B.p.locator('.conflict').count(), 0);
+});
+await step('new user is asked for a display name once; it is saved and used in the greeting', async () => {
+  const uid3 = await signUp('third@test.local');
+  const c = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  await c.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); } catch {} });
+  const p = await c.newPage();
+  await login(p, 'third@test.local');
+  await p.waitForSelector('[role=dialog] input', { timeout: 15000 });
+  await p.locator('[role=dialog] input').fill('سارة العتيبي');
+  await p.getByRole('button', { name: 'حفظ' }).click();
+  await p.waitForSelector('[role=dialog]', { state: 'detached', timeout: 10000 });
+  assert.match(await p.locator('.today-hello h1').innerText(), /سارة/);
+  let name = '';
+  for (let k = 0; k < 10 && name !== 'سارة العتيبي'; k++) { await new Promise(r => setTimeout(r, 700)); name = val((await fsGet(`users/${uid3}`)).fields?.name) ?? ''; }
+  assert.equal(name, 'سارة العتيبي');
+  await c.close();
 });
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
 

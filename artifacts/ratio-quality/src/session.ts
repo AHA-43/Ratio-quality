@@ -179,3 +179,14 @@ export async function publishStandards(next: Question[], base: Question[]) {
   await saveConfig({ standards: { version, ranges, criteria }, standardsHistory: [{ version, at: new Date().toISOString(), by: current?.name || current?.email || 'local', changes }, ...(config.standardsHistory ?? [])].slice(0, 100) });
   return version;
 }
+
+/** Display name the user chose (shown in greetings, reports, signatures). */
+export async function setMyName(name: string) {
+  const clean = name.trim().replace(/\s+/g, ' ');
+  if (!clean || !current || !fs || !auth?.currentUser) return;
+  await updateDoc(doc(fs, 'users', current.uid), { name: clean });
+  current = { ...current, name: clean };
+  try { localStorage.setItem(cacheKey(current.uid), JSON.stringify(current)); } catch { /* ignore */ }
+  emit();
+}
+export const looksAutoNamed = (p: Profile | null) => Boolean(p && p.email && p.name === p.email.split('@')[0]);

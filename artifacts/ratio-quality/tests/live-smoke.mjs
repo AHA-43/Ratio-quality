@@ -11,7 +11,7 @@ const step = async (name, fn) => { try { await fn(); results.push(`PASS | ${name
 
 const b = await chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
-await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); } catch {} });
+await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} });
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
 let id = '';
 await step('site loads with branded login', async () => { await p.goto(APP_URL); await p.waitForSelector('.login-card', { timeout: 30000 }); assert.equal(await p.locator('.login-logo').count(), 1); });

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { tidyArabic } from './text';
+import { looksAutoNamed, setMyName, useProfile } from '../session';
 export { tidyArabic };
 
 /* ---------- Arabic voice dictation (Web Speech API; on-device/browser service, nothing stored by us) ---------- */
@@ -73,5 +74,21 @@ export function WritingHelper({ kind, value, onApply }: { kind: 'observation' | 
     <div className="wh-chips">{STARTERS[kind].map(p => <button type="button" key={p} onClick={() => onApply(value.trim() ? `${value.trim()} ${p} ` : `${p} `, value)}>{p}</button>)}</div>
     {value.trim().length > 8 && tidy !== value.trim() && preview === null && <button type="button" className="wh-tidy" onClick={() => setPreview(tidy)}>✨ تنسيق النص</button>}
     {preview !== null && <div className="wh-preview"><small>المقترح (لا يغيّر المعنى — تنسيق المسافات وعلامات الترقيم فقط):</small><p>{preview}</p><div><button type="button" className="primary" onClick={() => { onApply(preview, value); setPreview(null); }}>اعتماد</button><button type="button" onClick={() => setPreview(null)}>إلغاء</button></div></div>}
+  </div>;
+}
+
+/* ---------- one-time "what should we call you?" ---------- */
+export function AskName() {
+  const profile = useProfile();
+  const [v, setV] = useState('');
+  const [skipped, setSkipped] = useState(() => { try { return sessionStorage.getItem('rq-name-skip') === '1'; } catch { return false; } });
+  if (!profile || !looksAutoNamed(profile) || skipped) return null;
+  return <div className="coach" role="dialog" aria-label="اسمك">
+    <form className="coach-card" onSubmit={e => { e.preventDefault(); if (v.trim().length >= 2) setMyName(v); }}>
+      <b>أهلاً بك في ريشيو للجودة</b>
+      <p>بأي اسم نناديك؟ يظهر اسمك في الزيارات والتقارير والتواقيع.</p>
+      <input className="typed-input" autoFocus value={v} onChange={e => setV(e.target.value)} placeholder="الاسم الكامل" autoComplete="name"/>
+      <div className="coach-actions"><button type="button" onClick={() => { try { sessionStorage.setItem('rq-name-skip', '1'); } catch { /* ignore */ } setSkipped(true); }}>لاحقاً</button><button type="submit" className="primary" disabled={v.trim().length < 2}>حفظ</button></div>
+    </form>
   </div>;
 }
