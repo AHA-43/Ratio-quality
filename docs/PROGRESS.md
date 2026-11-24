@@ -21,6 +21,13 @@ CI gate: unit tests (scoring, checklist, Excel export) + Firestore security-rule
 - Exports from the saved record: PDF (print), Excel (4 sheets, filterable), PowerPoint (branded, per-finding slides, action plan, signatures). Share sheet on phones; ready-made Arabic email draft (mailto).
 - Append-only audit log (submit, approve, return, action changes, exports, user changes).
 
+## Field mode, insight and polish (latest)
+- One-tap "start at nearest branch" (auto-starts only within 500 m of an exact-coordinate branch), fixed phone answer bar (answer / note / photo / next-incomplete), automatic camera on "غير مطابق", screen wake lock, section progress, quick phrases, live "saved on device / uploaded" status and pending-upload counter.
+- Photo annotation (circle / arrow / pen, 4 colours) with the result stored as the evidence image; before/after photo comparison against the previous visit; one-page branch card (PNG, 1080×1350) for managers; submit celebration with tiered message and milestones.
+- Priorities page: most-failing questions (90 days, with trend), improving/declining branches, stale/never-visited branches, and a weekly plan (Sun–Thu, 1–3 visits/day, nearest branches grouped, reasons shown). Pure functions in `features/insights.ts` with unit tests.
+- Practice visit (8 real questions with guided hints, device-only, excluded from every statistic and rejected by the cloud rules). Install guide (iOS/Android, in-app-browser warning). Large-text and high-contrast "sunlight" mode.
+- Hardening: draft ownership + no training docs + counter-reset protection in rules (18 rules tests); security headers and a Content-Security-Policy (report-only first; the live smoke test fails on any violation, switch to enforcing once clean); lazy screens + vendor chunks; storage persistence request, quota warning, 45 s retry while uploads are pending, update banner, chunk-reload guard; local error log + one-tap diagnostics (Settings → الدعم); axe-core audit: 744 → 3 minor findings (re-run command in OPERATIONS.md).
+
 ## Defaults assumed (change if wrong)
 - Branch-score uses the inspection's own Section 4 answers; individual barista scores are separate and do not change it.
 - Deadline clock starts when the action is created. Recurring = failed at the previous submitted/approved visit of the same branch.

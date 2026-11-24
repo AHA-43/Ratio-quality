@@ -45,3 +45,12 @@ To invite a user: add their email on a new line in `config/invites.txt` and push
 5. Branch-manager portal (v1 uses email only).
 6. Server-side email delivery with history and retries; server-rendered PDF.
 7. AI writing assistant (text-only suggestions with explicit acceptance; original and accepted text stored).
+
+## Accessibility audit (axe-core)
+Build with `vite build --mode shot`, run `vite preview --port 4181`, install `axe-core` in a scratch folder and inject `axe.min.js` on each page with Playwright (390×844), running tags wcag2a, wcag2aa, best-practice. Last result: 3 minor findings (two heading-order notes, one contrast on a decorative counter). Re-run after any colour change.
+
+## Content-Security-Policy
+`firebase.json` serves the policy as `Content-Security-Policy-Report-Only` (source of truth: `artifacts/ratio-quality/csp.txt`). The post-deploy smoke test fails if the browser logs any violation. When it has been green for a few deploys, rename the header to `Content-Security-Policy` to enforce. `CSP_TEST=1 vite preview` serves the enforced policy locally.
+
+## Support
+Settings → الدعم → «نسخ التشخيص» copies version, device, storage, pending uploads and the last 40 errors (no inspection data).

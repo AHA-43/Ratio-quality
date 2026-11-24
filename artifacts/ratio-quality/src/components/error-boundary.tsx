@@ -1,3 +1,4 @@
+import { logError } from '../errorlog';
 import {
   Component,
   type ComponentType,
@@ -74,6 +75,7 @@ export class ErrorBoundary extends Component<
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo): void {
+    logError('react', error);
     console.error(
       'ErrorBoundary caught an error:',
       toError(error),

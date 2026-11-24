@@ -5,6 +5,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 
 import './index.css';
 import './brand.css';
+import { installErrorLog } from './errorlog';
+installErrorLog();
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {

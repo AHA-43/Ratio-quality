@@ -730,3 +730,4 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .empty-state .empty-title { margin: 13px 0 4px; font-size: 14px; color: #40504a; font-weight: 700; }
 @media (max-width: 767px) { input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea { font-size: 16px; } }
 .hello-actions { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; } .near-btn { min-height: 44px; }
+.diag-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; } .form-ok { color: #1f7a4d; display: block; margin-top: 8px; }

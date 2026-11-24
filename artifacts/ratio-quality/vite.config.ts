@@ -30,6 +30,7 @@ if (!basePath) {
 
 export default defineConfig({
   base: basePath,
+  define: { __APP_VERSION__: JSON.stringify((process.env.GITHUB_SHA ?? 'dev').slice(0, 7)) },
   plugins: [
     react(),
     tailwindcss(),
