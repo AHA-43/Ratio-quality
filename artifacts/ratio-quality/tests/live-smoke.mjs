@@ -16,10 +16,14 @@ const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push
 let id = '';
 await step('site loads with branded login', async () => { await p.goto(APP_URL); await p.waitForSelector('.login-card', { timeout: 30000 }); assert.equal(await p.locator('.login-logo').count(), 1); });
 await step('sign in', async () => { await p.locator('input[type=email]').fill(EMAIL); await p.locator('input[type=password]').fill(PASSWORD); await p.getByRole('button', { name: 'دخول' }).click(); await p.waitForSelector('.today', { timeout: 30000 }); });
-await step('branch master loaded (>=120 active)', async () => {
+await step('branch master loaded: Kingdom map by default, search lists branches', async () => {
   await p.goto(APP_URL + '/inspection/new'); await p.waitForSelector('[data-testid=input-branch-search]');
-  await p.waitForTimeout(1500);
-  assert.ok(await p.locator('.branch-option').count() >= 50);
+  await p.waitForSelector('.saudi-map .city', { timeout: 20000 });
+  assert.ok(await p.locator('.saudi-map .city').count() >= 25, 'city bubbles on the map');
+  await p.getByTestId('input-branch-search').fill('HAS.');
+  await p.waitForSelector('.branch-option');
+  assert.ok(await p.locator('.branch-option').count() >= 10, 'search results');
+  await p.getByTestId('input-branch-search').fill('');
 });
 await step('start draft and answer with photo', async () => {
   await p.getByTestId('input-branch-search').fill('HAS.01'); await p.locator('.branch-option').first().click();
