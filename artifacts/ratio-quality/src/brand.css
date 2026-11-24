@@ -767,3 +767,40 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .search-btn { display: inline-grid; place-items: center; }
 .vb-skip { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #55558a; margin-top: 12px; cursor: pointer; }
 .ex-donut ul { max-width: 190px; } .ex-donut li { grid-template-columns: 12px 1fr 30px; }
+
+/* ================= mobile-first touch targets (≥44px, WCAG 2.5.5 / Apple HIG) ================= */
+@media (max-width: 767px) {
+  .topbar .icon-button, .topbar .avatar, .display-menu .icon-button, .search-btn { min-width: 44px; min-height: 44px; width: 44px; height: 44px; }
+  .topbar { height: 60px; } .topbar-right { gap: 4px; }
+  .text-link, .back-link { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 4px; }
+  .segmented button, .filter-chip, .pr-tabs button, .sp-seg { min-height: 44px; }
+  .button, button.button, a.button { min-height: 44px; }
+  .branch-row .icon-button, .icon-button { min-width: 44px; min-height: 44px; }
+  select, input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=range]) { min-height: 44px; }
+  .branch-search input, .search-field input, .pal-input input { min-height: 40px; }
+  .chip, .count-badge { min-height: 28px; }
+}
+@media (max-width: 767px) {
+  body .near-me, body .page-title > .button, body .add-branch-form .button, body [data-testid="button-save-standards"], body .small-arrow { min-height: 44px; }
+  body .small-arrow { min-width: 44px; display: inline-grid; place-items: center; }
+}
+/* plan: visible selected state; home suggestion: quieter buttons so the hero stays the main call to action */
+.pr-plan-head .segmented { background: #ebe8f7; padding: 4px; border-radius: 14px; gap: 4px; }
+.pr-plan-head .segmented button { border: 0; border-radius: 11px; background: transparent; color: #55558a; font: inherit; font-weight: 700; min-height: 44px; }
+.pr-plan-head .segmented button.active { background: #fff; color: var(--navy); box-shadow: 0 2px 8px #07014f1f; }
+.pr-home .pr-go { background: var(--corn-soft); color: var(--navy); box-shadow: none; border: 1px solid #d5dafc; min-height: 44px; padding: 0 14px; }
+.pr-home .pr-visit { padding: 12px 0; }
+@media (max-width: 767px) { .hello-actions { gap: 6px; } .today-hello .button { padding: 0 14px; } }
+.report-result.tone-good b { color: #1f7a4d; } .report-result.tone-ok b { color: #3a46c4; } .report-result.tone-warn b { color: #8a5a00; } .report-result.tone-bad b { color: #b3261e; }
+.report-result.tone-bad small { color: #b3261e; font-weight: 700; }
+/* ===== "More" sheet: thumb-reach grid replaces the tiny top menu ===== */
+.more-sheet .is-body { padding-top: 26px; } .more-sheet h2 { margin-bottom: 16px; }
+.more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.more-grid a { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; min-height: 64px; padding: 10px 12px; border-radius: 16px; background: #f7f8ff; border: 1px solid #e1e5fb; color: var(--navy); text-decoration: none; font-size: 13.5px; line-height: 1.5; transition: transform .15s var(--ease-spring), background .2s; }
+.more-grid a:active { transform: scale(.97); } .more-grid a.on { background: var(--corn-soft); border-color: var(--corn); }
+.mg-ico { width: 44px; height: 44px; border-radius: 13px; background: #fff; display: grid; place-items: center; color: var(--navy-3); box-shadow: 0 2px 8px #07014f12; }
+.bottom-nav .more-tab { background: none; border: 0; font: inherit; cursor: pointer; }
+@media (max-width: 767px) { .menu-toggle { display: none !important; } }
+.bottom-nav .more-tab { min-width: 56px; min-height: 56px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px 4px 2px; color: #616185; font-size: 10px; position: relative; }
+.bottom-nav .more-tab.selected { color: var(--navy); font-weight: 700; } .bottom-nav .more-tab.selected .nav-ico::before { opacity: 1; transform: none; }
+.is-x { inset-inline-start: auto !important; inset-inline-end: 14px; }

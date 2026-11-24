@@ -124,7 +124,7 @@ export type ExecSummary = {
   narrative: string[];
 };
 /** Percent with direction marks so Arabic text doesn't flip it to %92. */
-export const pct = (n: number | string) => `\u200E${n}%\u200E`;
+export const pct = (n: number | string) => `\u2066${n}%\u2069`;
 const mean = (xs: number[]) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 

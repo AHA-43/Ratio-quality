@@ -10,7 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form } from '@/components/ui/form';
 import { createPortal } from 'react-dom';
-import { GraduationCap, PenLine, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
+import { CalendarCheck, GraduationCap, PenLine, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
@@ -106,6 +106,16 @@ function useOnline() {
   return online;
 }
 
+const MORE_ICONS: Record<string, typeof Gauge> = { '/executive': Gauge, '/priorities': CalendarCheck, '/branches': Store, '/analytics': Activity, '/equipment': Coffee, '/baristas': Coffee, '/users': ShieldCheck, '/config': FileText, '/settings': Settings };
+function MoreSheet({ location, onClose }: { location: string; onClose: () => void }) {
+  const items = [...moreNav, ...nav.filter(n => n.href === '/settings')];
+  return createPortal(<div className="install-sheet more-sheet" role="dialog" aria-label="المزيد" dir="rtl" onClick={onClose}>
+    <div className="is-body" onClick={e => e.stopPropagation()}>
+      <button type="button" className="is-x" onClick={onClose} aria-label="إغلاق"><X size={18}/></button>
+      <h2>المزيد</h2>
+      <div className="more-grid">{items.map(n => { const Icon = MORE_ICONS[n.href] ?? FileText; return <Link key={n.href} href={n.href} onClick={onClose} data-testid={`mobile-nav-${n.href}`} className={location.startsWith(n.href) ? 'on' : ''}><span className="mg-ico"><Icon size={22}/></span><b>{n.label}</b></Link>; })}</div>
+    </div></div>, document.body);
+}
 function usePendingCount() {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -136,6 +146,8 @@ function AppShell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }); }, [location]);
   const [mobileMenu, setMobileMenu] = useState(false);
+  useEffect(() => { setMobileMenu(false); }, [location]);
+  const inMore = [...moreNav, ...nav].some(n => n.href !== '/' && !['/visits', '/actions', '/reports'].includes(n.href) && location.startsWith(n.href));
   return <div dir="rtl" className="app-shell">
     <aside className="side-rail">
       <Link href="/" className="brand-lockup" aria-label="ريشيو للجودة"><img src="/brand/logo-ar-white.png" alt="ريشيو"/><span className="brand-sub">إدارة الجودة</span></Link>
@@ -151,10 +163,10 @@ function AppShell({ children }: { children: ReactNode }) {
       </header>
       {updateReady && <div className="update-banner" role="status"><span>تم تحديث التطبيق إلى نسخة أحدث.</span><button type="button" onClick={() => window.location.reload()}>تحديث الآن</button></div>}
       {storageWarn && <div className="storage-banner" role="alert"><b>مساحة جهازك شبه ممتلئة ({storageWarn.pct}%)</b><span>ارفع الزيارات المعلّقة، ثم احذف المسودات القديمة والتجريبية لتفادي فقدان التقدّم.</span></div>}
-      {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
+      {mobileMenu && <MoreSheet location={location} onClose={() => setMobileMenu(false)}/>}
       <AskName/>
       <main className="page-wrap">{children}</main>
-      <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><span className="nav-ico"><n.icon size={22}/></span><span>{n.label}</span></Link>)}</nav>
+      <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.filter(n => n.href !== '/settings').map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><span className="nav-ico"><n.icon size={22}/></span><span>{n.label}</span></Link>)}<button type="button" className={`more-tab ${mobileMenu || inMore ? 'selected' : ''}`} onClick={() => setMobileMenu(true)} aria-haspopup="dialog" data-testid="bottom-nav-more"><span className="nav-ico"><MoreHorizontal size={22}/></span><span>المزيد</span></button></nav>
     </div>
   </div>;
 }
@@ -331,7 +343,7 @@ function VisitsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
 function ReportsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const reports = data.inspections.filter(i => i.status === 'finalized');
   return <div className="page-content"><PageTitle eyebrow="نتائج قابلة للطباعة" title="التقارير" detail="كل تقرير يعرض لقطة محفوظة من الأسئلة والمعايير وقت الإنهاء."/>
-    {reports.length ? <Card><div className="report-list">{reports.map(i => { const result = calculateScore(i.questionSnapshot, i.answers); return <div className="report-row" key={i.id}><span className="report-icon"><FileCheck2 size={19}/></span><div className="report-info"><b>{i.branchName}</b><small>{i.date} · {i.inspector} · {i.type}</small></div><div className="report-result"><b>{result.score}%</b><small>{result.classification}</small></div><Link href={`/reports/${i.id}`} className="button button-outline button-small" data-testid={`open-report-${i.id}`}>فتح التقرير <ArrowLeft size={14}/></Link></div>; })}</div></Card> : <Card><EmptyState icon={FileText} title="لا توجد تقارير مكتملة" text="بعد إنهاء الزيارة ستجد التقرير هنا، جاهزاً للطباعة من المتصفح." action={<Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/></Card>}</div>;
+    {reports.length ? <Card><div className="report-list">{reports.map(i => { const result = calculateScore(i.questionSnapshot, i.answers); return <div className="report-row" key={i.id}><span className="report-icon"><FileCheck2 size={19}/></span><div className="report-info"><b>{i.branchName}</b><small>{i.date} · {i.inspector} · {i.type}</small></div><div className={`report-result tone-${result.classification === 'غير مقبول' ? 'bad' : result.classification === 'يحتاج تحسين' ? 'warn' : result.classification === 'جيد' ? 'ok' : 'good'}`}><b>{result.score}%</b><small>{result.classification}</small></div><Link href={`/reports/${i.id}`} className="button button-outline button-small" data-testid={`open-report-${i.id}`}>فتح التقرير <ArrowLeft size={14}/></Link></div>; })}</div></Card> : <Card><EmptyState icon={FileText} title="لا توجد تقارير مكتملة" text="بعد إنهاء الزيارة ستجد التقرير هنا، جاهزاً للطباعة من المتصفح." action={<Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/></Card>}</div>;
 }
 
 function CelebrationGate({ inspection, count }: { inspection: Inspection; count: number }) {

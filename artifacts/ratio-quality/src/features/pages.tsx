@@ -227,7 +227,7 @@ export function BaristasPage({ data }: { data: AppData }) {
     <div className="action-cards">{rows.map(({ b, es, scores, gaps }) => <section key={b.id} className="surface-card">
       <div className="action-head"><b>{b.name}{!b.active && <em className="wf-pill returned"> موقوف</em>}</b><span className="action-date">{b.branchName}</span></div>
       <div className="barista-actions"><button type="button" className="text-link" onClick={() => { const n = window.prompt('الاسم الجديد', b.name)?.trim(); if (n && n !== b.name) patch(b, { name: n }); }}>تعديل الاسم</button><button type="button" className="text-link" onClick={() => patch(b, { active: !b.active })}>{b.active ? 'إيقاف' : 'إعادة تفعيل'}</button></div>
-      <p>التقييمات {es.length} · آخر نتيجة {scores.at(-1) ?? '—'}% · السابقة {scores.at(-2) ?? '—'}%{scores.length >= 2 ? ` · ${scores.at(-1)! >= scores.at(-2)! ? '↑ تحسّن' : '↓ تراجع'}` : ''}</p>
+      <p>التقييمات {es.length} · آخر نتيجة <bdi>{scores.at(-1) ?? '—'}%</bdi> · السابقة <bdi>{scores.at(-2) ?? '—'}%</bdi>{scores.length >= 2 ? ` · ${scores.at(-1)! >= scores.at(-2)! ? '↑ تحسّن' : '↓ تراجع'}` : ''}</p>
       {gaps.length > 0 && <div className="recurring-hint"><b>يوصى بمتابعة تدريبية في:</b>{gaps.map(g => <small key={g.q.id}>#{g.q.id} {g.q.title} (تكرر {g.n} مرات)</small>)}</div>}
     </section>)}</div>
   </div>;

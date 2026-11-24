@@ -203,7 +203,7 @@ export function suggestTemplate(i: Inspection): string {
 export function renderTemplate(t: { subject: string; body: string }, i: Inspection) {
   const s = calculateScore(i.questionSnapshot, i.answers);
   const vars: Record<string, string> = { branch: i.branchName, code: i.branchCode ? `(${i.branchCode})` : '', date: i.date.slice(0, 10), number: i.number ?? '—', score: String(s.score ?? '—'), class: s.classification ?? '—', status: workflowLabel(i), inspector: i.inspector, critical: String(s.criticalFailures) };
-  const fill = (x: string) => x.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m).replace(/ {2,}/g, ' ');
+  const fill = (x: string) => x.replace(/\{(\w+)\}/g, (m, k) => k in vars ? vars[k] : m).replace(/ {2,}/g, ' ').replace(/(\d+(?:\.\d+)?)%/g, '\u2066$1%\u2069');
   return { subject: fill(t.subject), body: fill(t.body) };
 }
 export function mailtoLink(i: Inspection, to: string[] = [], cc: string[] = [], msg?: { subject: string; body: string }) {

@@ -36,7 +36,7 @@ export function PrioritiesPage({ data }: { data: D }) {
             <div className="pr-focus-main"><b>{f.q.id}. {f.q.title}</b>
               <div className="pr-meta"><span className={`severity-tag ${f.q.severity.toLowerCase()}`}>{SEV[f.q.severity]}</span><span>{f.q.section}</span></div>
               <div className="pr-bar"><i style={{ width: `${Math.max(4, f.rate * 100)}%` }} className={f.q.severity === 'Critical' ? 'crit' : ''}/></div>
-              <small>{f.fails} من {f.of} زيارة ({Math.round(f.rate * 100)}%){f.branches.length ? ` · أبرزها: ${f.branches.join('، ')}` : ''}</small></div>
+              <small>{f.fails} من {f.of} زيارة (<bdi>{Math.round(f.rate * 100)}%</bdi>){f.branches.length ? ` · أبرزها: ${f.branches.join('، ')}` : ''}</small></div>
             {f.delta !== null && Math.abs(f.delta) >= 0.05 && <span className={`pr-trend ${f.delta > 0 ? 'worse' : 'better'}`}>{f.delta > 0 ? <TrendingUp size={14}/> : <TrendingDown size={14}/>}{f.delta > 0 ? 'يزداد' : 'يتحسن'}</span>}
           </li>)}</ol>}
       </section>
