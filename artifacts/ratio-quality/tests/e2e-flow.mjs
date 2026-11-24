@@ -43,6 +43,7 @@ await p.getByTestId('button-finalize').click({ timeout: 5000 });
 await p.waitForTimeout(1500);
 console.log('after submit:', p.url(), (await p.locator('main').innerText()).slice(0, 200).replace(/\n/g, ' | '));
 await p.waitForURL(/\/reports\//, { timeout: 15000 });
+await p.waitForSelector('.sc', { timeout: 15000 }); await p.screenshot({ path: `${out}/e2e-celebrate.png` }); await p.locator('.sc-main').click();
 await p.waitForSelector('.approval-panel', { timeout: 15000 });
 const reportText = await p.locator('main').innerText();
 assert.match(reportText, /غير مقبول/, 'critical failure => unacceptable');

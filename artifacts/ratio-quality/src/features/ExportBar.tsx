@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { audit, listMail, logMail, useConfig, type MailEntry } from '../session';
 import { deliver, exportPptx, exportXlsx, mailtoLink, MAIL_TEMPLATES, renderTemplate, suggestTemplate } from './exports';
 import { exportTemplatePptx } from './template-pptx';
+import { renderBranchCard } from './branch-card';
 
 export function ExportBar({ inspection, actions }: { inspection: Inspection; actions: ActionItem[] }) {
   const [busy, setBusy] = useState('');
@@ -17,10 +18,10 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   const [showMsg, setShowMsg] = useState(false);
   const pickTemplate = (id: string) => { setTplId(id); setMsg(renderTemplate(MAIL_TEMPLATES.find(t => t.id === id) ?? MAIL_TEMPLATES[0], inspection)); };
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
-  const run = async (kind: 'xlsx' | 'pptx' | 'tpl', share: boolean) => {
+  const run = async (kind: 'xlsx' | 'pptx' | 'tpl' | 'card', share: boolean) => {
     setBusy(kind); setErr('');
     try {
-      const out = kind === 'xlsx' ? await exportXlsx(inspection, actions) : kind === 'tpl' ? await exportTemplatePptx(inspection, actions) : await exportPptx(inspection, actions);
+      const out = kind === 'card' ? { blob: await renderBranchCard(inspection), name: `Ratio-card-${inspection.branchCode || 'BRANCH'}-${inspection.date.slice(0, 10)}.png` } : kind === 'xlsx' ? await exportXlsx(inspection, actions) : kind === 'tpl' ? await exportTemplatePptx(inspection, actions) : await exportPptx(inspection, actions);
       await deliver(out.blob, out.name, share);
       logMail({ inspectionId: inspection.id, channel: share ? 'share' : 'download', file: out.name });
       audit(`report.export.${kind}`, 'inspections', inspection.id, { share });
@@ -29,6 +30,7 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   };
   return <div className="export-bar no-print">
     <button className="button button-outline" disabled={!!busy} onClick={() => window.print()}>PDF / طباعة</button>
+    <button className="button button-soft" disabled={!!busy} onClick={() => run('card', canShare)} data-testid="button-branch-card">{busy === 'card' ? 'جارٍ الإنشاء…' : 'بطاقة الفرع (صورة)'}</button>
     <button className="button button-outline" disabled={!!busy} onClick={() => run('xlsx', false)}>{busy === 'xlsx' ? 'جارٍ الإنشاء…' : 'Excel'}</button>
     <button className="button button-outline" disabled={!!busy} onClick={() => run('tpl', false)}>{busy === 'tpl' ? 'جارٍ الإنشاء…' : 'PowerPoint · القالب المعتمد'}</button>
     <button className="button button-outline" disabled={!!busy} onClick={() => run('pptx', false)}>{busy === 'pptx' ? 'جارٍ الإنشاء…' : 'PowerPoint · عرض مفصّل'}</button>

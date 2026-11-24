@@ -30,7 +30,7 @@ export function useWakeLock(active: boolean) {
 export function useKeyboardOpen() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const isField = (t: EventTarget | null) => t instanceof HTMLElement && /^(TEXTAREA|INPUT|SELECT)$/.test(t.tagName) && !(t instanceof HTMLInputElement && ['checkbox', 'radio', 'file', 'button'].includes(t.type));
+    const isField = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'TEXTAREA' || (t instanceof HTMLInputElement && ['text', 'search', 'email', 'url', 'tel'].includes(t.type)));
     const on = (e: FocusEvent) => setOpen(isField(e.target)); const off = () => setOpen(false);
     window.addEventListener('focusin', on); window.addEventListener('focusout', off);
     return () => { window.removeEventListener('focusin', on); window.removeEventListener('focusout', off); };

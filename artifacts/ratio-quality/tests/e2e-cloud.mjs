@@ -75,6 +75,7 @@ await step('submit requires signatures; then gets sequential number RQ-YYYY-0000
   await A.p.getByPlaceholder('الاسم الكامل').last().fill('مسؤول الفرع');
   await draw(A.p, '.sig-pad canvas >> nth=1');
   await A.p.getByTestId('button-finalize').click();
+  await A.p.waitForSelector('.sc', { timeout: 15000 }); await A.p.locator('.sc-main').click();
   await A.p.waitForURL(/\/reports\//); await A.p.waitForTimeout(2500);
   assert.match(await A.p.locator('main').innerText(), new RegExp(`RQ-${new Date().getFullYear()}-00001`));
 });

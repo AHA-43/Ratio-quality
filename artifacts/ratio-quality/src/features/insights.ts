@@ -1,0 +1,113 @@
+// Pure analytics used by the "Priorities" page (focus points + weekly plan) and by the branch card.
+// No React, no browser APIs: unit-tested with node.
+import type { ActionItem, Branch, Inspection, Question } from '../data.ts';
+import { calculateScore } from '../scoring.ts';
+/** Geo helpers are injected (the real ones read a JSON file only the bundler can import). */
+export type Geo = { pos: (b: Branch) => { lat: number; lng: number } | null; city: (name: string) => string; dist: (a: { lat: number; lng: number }, b: { lat: number; lng: number }) => number };
+
+const DAY = 86400000;
+export const dateOf = (i: Pick<Inspection, 'date'>) => { const t = Date.parse(i.date.replace(' ', 'T')); return Number.isNaN(t) ? 0 : t; };
+const failedAt = (i: Inspection, qid: number) => { const a = i.answers[qid]; return Boolean(a && (a.value === 'fail' || a.initialValue === 'fail')); };
+const isReal = (i: Inspection) => i.status === 'finalized' && !i.training;
+const sevRank: Record<string, number> = { Critical: 0, Major: 1, Minor: 2 };
+const overdue = (a: ActionItem, now: number) => a.status !== 'مغلق' && Boolean(a.dueDate) && a.dueDate < new Date(now).toISOString().slice(0, 10);
+
+export type FocusItem = { q: Pick<Question, 'id' | 'title' | 'section' | 'severity'>; fails: number; of: number; rate: number; priorRate: number | null; delta: number | null; branches: string[] };
+export type BranchTrend = { branch: Branch; last: number; prev: number; delta: number };
+export type StaleBranch = { branch: Branch; days: number | null };
+export type Focus = { top: FocusItem[]; improving: BranchTrend[]; declining: BranchTrend[]; stale: StaleBranch[]; never: number; criticalOpen: number; overdueActions: number; visits: number; windowDays: number };
+
+export function focusInsights(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, now = Date.now(), windowDays = 90): Focus {
+  const real = input.inspections.filter(isReal);
+  const active = input.branches.filter(b => !b.archived && !b.demo);
+  const recent = real.filter(i => now - dateOf(i) <= windowDays * DAY);
+  const prior = real.filter(i => { const d = now - dateOf(i); return d > windowDays * DAY && d <= 2 * windowDays * DAY; });
+  const stat = (list: Inspection[]) => {
+    const m = new Map<number, { q: FocusItem['q']; fails: number; of: number; branches: Map<string, number> }>();
+    for (const i of list) for (const q of i.questionSnapshot) {
+      const a = i.answers[q.id]; if (!a || a.value == null || a.value === 'na') continue;
+      const e = m.get(q.id) ?? { q: { id: q.id, title: q.title, section: q.section, severity: q.severity }, fails: 0, of: 0, branches: new Map() };
+      e.of++; if (failedAt(i, q.id)) { e.fails++; e.branches.set(i.branchName, (e.branches.get(i.branchName) ?? 0) + 1); }
+      m.set(q.id, e);
+    }
+    return m;
+  };
+  const cur = stat(recent), old = stat(prior);
+  const top: FocusItem[] = [...cur.values()].filter(e => e.fails > 0).map(e => {
+    const o = old.get(e.q.id); const rate = e.fails / e.of; const priorRate = o && o.of >= 3 ? o.fails / o.of : null;
+    return { q: e.q, fails: e.fails, of: e.of, rate, priorRate, delta: priorRate === null ? null : rate - priorRate, branches: [...e.branches.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]) };
+  }).sort((a, b) => b.fails - a.fails || sevRank[a.q.severity] - sevRank[b.q.severity] || b.rate - a.rate).slice(0, 8);
+
+  const trends: BranchTrend[] = [];
+  const lastVisit = new Map<string, number>();
+  for (const b of active) {
+    const mine = real.filter(i => i.branchId === b.id).sort((x, y) => dateOf(y) - dateOf(x));
+    if (mine[0]) lastVisit.set(b.id, dateOf(mine[0]));
+    if (mine.length >= 2) {
+      const s1 = calculateScore(mine[0].questionSnapshot, mine[0].answers).score, s2 = calculateScore(mine[1].questionSnapshot, mine[1].answers).score;
+      if (s1 !== null && s2 !== null) trends.push({ branch: b, last: s1, prev: s2, delta: +(s1 - s2).toFixed(1) });
+    }
+  }
+  const improving = trends.filter(t => t.delta >= 3).sort((a, b) => b.delta - a.delta).slice(0, 5);
+  const declining = trends.filter(t => t.delta <= -3).sort((a, b) => a.delta - b.delta).slice(0, 5);
+  const staleAll: StaleBranch[] = active.map(b => ({ branch: b, days: lastVisit.has(b.id) ? Math.floor((now - lastVisit.get(b.id)!) / DAY) : null }))
+    .filter(x => x.days === null || x.days > 30);
+  const stale = staleAll.filter(x => x.days !== null).sort((a, b) => b.days! - a.days!).slice(0, 8);
+  const never = staleAll.filter(x => x.days === null).length;
+  const open = input.actions.filter(a => a.status !== 'مغلق');
+  return { top, improving, declining, stale, never, criticalOpen: open.filter(a => a.severity === 'Critical').length, overdueActions: open.filter(a => overdue(a, now)).length, visits: recent.length, windowDays };
+}
+
+/* ---------------- weekly plan ---------------- */
+export type PlanItem = { branch: Branch; priority: number; reasons: string[]; km: number | null };
+export type PlanDay = { date: Date; items: PlanItem[] };
+
+export function branchPriority(b: Branch, input: { inspections: Inspection[]; actions: ActionItem[] }, now: number): { priority: number; reasons: string[] } {
+  const mine = input.inspections.filter(i => isReal(i) && i.branchId === b.id).sort((x, y) => dateOf(y) - dateOf(x));
+  const open = input.actions.filter(a => a.status !== 'مغلق' && (a.branchId === b.id || a.branchName === b.name));
+  let p = 0; const reasons: string[] = [];
+  if (!mine.length) { p += 60; reasons.push('لم يُزر من قبل'); }
+  else {
+    const days = Math.floor((now - dateOf(mine[0])) / DAY);
+    p += Math.min(days, 90) * .6 + (days > 30 ? 10 : 0);
+    if (days > 30) reasons.push(`آخر زيارة قبل ${days} يوماً`);
+    if (days < 10) p -= 50;
+    const cls = calculateScore(mine[0].questionSnapshot, mine[0].answers).classification;
+    if (cls === 'غير مقبول') { p += 40; reasons.push('آخر نتيجة: غير مقبول'); }
+    else if (cls === 'يحتاج تحسين') { p += 25; reasons.push('آخر نتيجة: يحتاج تحسين'); }
+    else if (cls === 'جيد') p += 5;
+  }
+  const crit = open.filter(a => a.severity === 'Critical').length, late = open.filter(a => overdue(a, now)).length;
+  if (crit) { p += Math.min(crit * 15, 45); reasons.push(`${crit} إجراء حرج مفتوح`); }
+  if (late) { p += Math.min(late * 6, 30); reasons.push(`${late} إجراء متأخر`); }
+  return { priority: Math.round(p), reasons };
+}
+
+const WEEKDAY_OFF = new Set([5, 6]); // Friday, Saturday
+export function workDays(from: Date, n: number) {
+  const out: Date[] = []; const d = new Date(from); d.setHours(0, 0, 0, 0);
+  while (out.length < n) { if (!WEEKDAY_OFF.has(d.getDay())) out.push(new Date(d)); d.setDate(d.getDate() + 1); }
+  return out;
+}
+
+/** Highest-priority branches first; each day is filled with the branches nearest to that day's anchor so trips stay short. */
+export function planWeek(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, opts: { perDay?: number; days?: number; from?: Date; geo: Geo }, now = Date.now()): PlanDay[] {
+  const perDay = opts.perDay ?? 2, days = opts.days ?? 5;
+  const scored = input.branches.filter(b => !b.archived && !b.demo)
+    .map(b => ({ b, ...branchPriority(b, input, now) })).filter(x => x.priority >= 15).sort((a, b) => b.priority - a.priority).slice(0, perDay * days);
+  const pool = [...scored]; const out: PlanDay[] = [];
+  const dates = workDays(opts.from ?? new Date(now), days);
+  const { pos: posOf, city: cityOf, dist: distanceKm } = opts.geo;
+  for (const date of dates) {
+    if (!pool.length) break;
+    const anchor = pool.shift()!; const items: PlanItem[] = [anchor].map(x => ({ branch: x.b, priority: x.priority, reasons: x.reasons, km: null }));
+    const ap = posOf(anchor.b);
+    while (items.length < perDay && pool.length) {
+      let best = 0, bestD = Infinity;
+      pool.forEach((c, idx) => { const cp = posOf(c.b); const d = ap && cp ? distanceKm(ap, cp) : (cityOf(c.b.name) === cityOf(anchor.b.name) ? 0 : 9999); if (d < bestD) { bestD = d; best = idx; } });
+      const [c] = pool.splice(best, 1); items.push({ branch: c.b, priority: c.priority, reasons: c.reasons, km: bestD < 9999 ? bestD : null });
+    }
+    out.push({ date, items });
+  }
+  return out;
+}

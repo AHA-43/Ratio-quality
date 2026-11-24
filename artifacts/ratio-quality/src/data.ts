@@ -4,7 +4,7 @@ import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, r
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
-export type Attachment = { id: string; name: string; type: string; data: string; caption: string; storagePath?: string };
+export type Attachment = { id: string; name: string; type: string; data: string; caption: string; storagePath?: string; annotated?: boolean };
 export type Answer = {
   value: AnswerValue;
   initialValue?: AnswerValue;
@@ -43,6 +43,8 @@ export type Inspection = {
   previous?: { inspectionId: string; date: string; score: number | null; classification: string | null };
   /** Documented correction of an approved report: a new revision linked to the locked original. */
   amendmentOf?: string; amendmentReason?: string; revision?: number;
+  /** Practice visit: never leaves this device and is excluded from every statistic. */
+  training?: boolean;
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
@@ -112,7 +114,7 @@ const syncedKey = 'rq-synced';
 const readSynced = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(syncedKey) || '{}'); } catch { return {}; } };
 export function markSynced(id: string, at?: string) { if (!at) return; try { const m = readSynced(); m[id] = at; localStorage.setItem(syncedKey, JSON.stringify(m)); } catch { /* ignore */ } }
 /** Records whose latest local version has not been confirmed as matching the cloud (not uploaded yet). */
-export function pendingUploadIds(list: { id: string; updatedAt: string }[]): string[] { const m = readSynced(); return list.filter(i => m[i.id] !== i.updatedAt).map(i => i.id); }
+export function pendingUploadIds(list: { id: string; updatedAt: string; training?: boolean }[]): string[] { const m = readSynced(); return list.filter(i => !i.training && m[i.id] !== i.updatedAt).map(i => i.id); }
 export function getConflict(id: string): Inspection | null { try { return JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); } catch { return null; } }
 const conflictListeners = new Set<(id: string) => void>();
 export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };
@@ -148,7 +150,7 @@ function schedulePush(store: StoreName, value: { id: string }) {
 export async function put<T extends { id: string }>(store: StoreName, value: T) {
   await localRepository.put(store, value);
   // Cloud mirroring never blocks or breaks local saving (offline-safe).
-  if (cloudEnabled && isSignedIn() && store !== 'settings') schedulePush(store, value);
+  if (cloudEnabled && isSignedIn() && store !== 'settings' && !(value as { training?: boolean }).training) schedulePush(store, value);
 }
 export async function remove(store: StoreName, id: string) {
   await localRepository.remove(store, id);
@@ -192,6 +194,7 @@ export async function syncAll() {
       const c = cloud.find(x => x.id === l.id);
       // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
       if (store === 'branches') continue;
+      if ((l as { training?: boolean }).training) continue; // practice visits stay on the device
       if (getConflict(l.id)) continue;
       if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
       else if (c?.updatedAt && c.updatedAt === l.updatedAt) markSynced(l.id, l.updatedAt);

@@ -10,7 +10,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form } from '@/components/ui/form';
 import { createPortal } from 'react-dom';
-import { Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
+import { GraduationCap, PenLine, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
@@ -22,6 +22,13 @@ import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { AskName, CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { explainScore, nameKey } from './features/text';
+import { PrioritiesPage, HomePriorityCard } from './features/priorities';
+import { PhotoAnnotator } from './features/photo-annotator';
+import { InstallCard } from './features/install-guide';
+import { DisplayMenu, initDisplay } from './features/display';
+import { TRAINING_HINTS, trainingQuestions } from './features/training';
+import { BeforeAfter } from './features/before-after';
+import { SubmitCelebration } from './features/celebration';
 import { QuickPhrases, SectionProgress, useKeyboardOpen, useMedia, useWakeLock } from './features/field-bar';
 import { branchPos, distanceKm, fmtKm } from './features/geo';
 import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
@@ -31,6 +38,7 @@ import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
 const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'صباح الخير' : h < 17 ? 'مساء الخير' : 'مساء النور'; };
+if (typeof document !== 'undefined') initDisplay();
 const nav = [
   { href: '/', label: 'الرئيسية', icon: RIconHome },
   { href: '/visits', label: 'الزيارات', icon: RIconVisits },
@@ -39,6 +47,7 @@ const nav = [
   { href: '/settings', label: 'الإعدادات', icon: RIconSettings },
 ];
 const moreNav = [
+  { href: '/priorities', label: 'الأولويات وخطة الأسبوع' },
   { href: '/branches', label: 'أداء الفروع' },
   { href: '/analytics', label: 'التحليلات' },
   { href: '/equipment', label: 'المعدات والصيانة' },
@@ -111,7 +120,7 @@ function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <button className="icon-button menu-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="فتح القائمة" data-testid="button-menu"><MoreHorizontal size={22}/></button>
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
-        <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
+        <div className="topbar-right"><DisplayMenu/>{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <AskName/>
@@ -135,6 +144,7 @@ function Card({ children, className = '' }: { children: ReactNode; className?: s
 
 function useLocalData() {
   const [inspections, setInspections] = useState<Inspection[]>([]);
+  const [training, setTraining] = useState<Inspection[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [ready, setReady] = useState(false);
@@ -142,7 +152,8 @@ function useLocalData() {
   const refresh = async () => {
     try {
       const [i, b, a] = await Promise.all([list<Inspection>('inspections'), list<Branch>('branches'), list<ActionItem>('actions')]);
-      setInspections(i.sort((x, y) => y.updatedAt.localeCompare(x.updatedAt)));
+      const sorted = i.sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
+      setInspections(sorted.filter(x => !x.training)); setTraining(sorted.filter(x => x.training));
       setBranches(b.sort((x, y) => x.name.localeCompare(y.name, 'ar')));
       setActions(a.sort((x, y) => x.dueDate.localeCompare(y.dueDate)));
       setError('');
@@ -151,7 +162,25 @@ function useLocalData() {
     } finally { setReady(true); }
   };
   useEffect(() => { initializeBranches().then(refresh).catch(() => { setError('تعذر تهيئة التخزين المحلي.'); setReady(true); }); }, []);
-  return { inspections, branches, actions, ready, error, refresh };
+  return { inspections, training, branches, actions, ready, error, refresh };
+}
+
+async function startTraining(inspector: string): Promise<string> {
+  const id = newId();
+  const insp: Inspection = { id, status: 'draft', training: true, branchId: 'training', branchName: 'فرع تجريبي', inspector: inspector || 'مفتش', startedAt: stamp(), checklistVersion: 'training', date: localDateTime().replace('T', ' '), type: 'زيارة تدريبية', shift: 'صباحية', employees: 2, answers: {}, questionSnapshot: trainingQuestions(QUESTIONS).map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
+  await put('inspections', insp); return id;
+}
+function TrainingDone() {
+  const [score] = useState<string | null>(() => { try { const v = sessionStorage.getItem('rq-training-done'); if (v !== null) sessionStorage.removeItem('rq-training-done'); return v; } catch { return null; } });
+  const [open, setOpen] = useState(score !== null);
+  if (!open) return null;
+  return <div className="training-done" role="status"><Celebrate fire={1}/><span>🎓</span><div><b>أحسنت! أنهيت الزيارة التدريبية</b><small>{score ? `نتيجتك التجريبية ${score}%. ` : ''}لم تُحفظ في الإحصاءات. أنت جاهز للزيارة الحقيقية.</small></div><button type="button" onClick={() => setOpen(false)} aria-label="إغلاق"><X size={16}/></button></div>;
+}
+function TrainingCard({ data }: { data: ReturnType<typeof useLocalData> }) {
+  const profile = useProfile(); const [, go] = useLocation();
+  const existing = data.training.find(t => t.status === 'draft');
+  const open = async () => { const id = existing?.id ?? await startTraining(profile?.name || ''); await data.refresh(); go(`/inspection/${id}`); };
+  return <section className="training-card"><span className="tc-ico"><GraduationCap size={26}/></span><div><b>{existing ? 'أكمل زيارتك التدريبية' : 'جرّب زيارة تدريبية'}</b><small>٣ دقائق على 8 بنود حقيقية مع إرشادات خطوة بخطوة. لا تُحفظ في التقارير ولا الإحصاءات.</small></div><button type="button" onClick={open} data-testid="button-training">{existing ? 'متابعة' : 'ابدأ التدريب'}</button></section>;
 }
 
 function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
@@ -168,6 +197,8 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const awaiting = finished.filter(i => i.workflow === 'submitted').length;
   const returned = drafts.filter(i => i.workflow === 'returned').length;
   return <div className="page-content">
+    <InstallCard/>
+    <TrainingDone/>
     <div className="today">
       <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name && !looksAutoNamed(profile) ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link></div>
       {latestDraft ? <Link href={`/inspection/${latestDraft.id}`} className="continue-card"><span className="ring" style={{ ['--p' as string]: draftPct }}><b>{draftPct}%</b></span><span><small>{latestDraft.workflow === 'returned' ? 'أُعيدت للتصحيح' : 'زيارة لم تكتمل'}</small><h2>{latestDraft.branchName}</h2><span className="cta">أكمل من حيث توقفت ←</span></span></Link>
@@ -179,6 +210,8 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
       </div>
     </div>
     {data.error && <div className="alert alert-danger">{data.error}<Button variant="outline" onClick={data.refresh}>إعادة المحاولة</Button></div>}
+    {data.ready && finished.length < 3 && <TrainingCard data={data}/>}
+    {data.ready && finished.length > 0 && <HomePriorityCard data={data}/>}
     <div className="metric-grid">
       <Card className="metric-card"><span className="metric-icon"><ClipboardCheck size={18}/></span><small>زيارات مكتملة</small><strong data-testid="metric-completed">{finished.length}</strong><span className="metric-caption">{cloudEnabled ? 'متزامنة مع حسابك' : 'محفوظة على هذا الجهاز'}</span></Card>
       <Card className="metric-card"><span className="metric-icon green"><Gauge size={18}/></span><small>متوسط الالتزام</small><strong>{average}{average !== '—' && <em>%</em>}</strong><span className="metric-caption">من الزيارات المكتملة</span></Card>
@@ -262,17 +295,23 @@ function ReportsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
     {reports.length ? <Card><div className="report-list">{reports.map(i => { const result = calculateScore(i.questionSnapshot, i.answers); return <div className="report-row" key={i.id}><span className="report-icon"><FileCheck2 size={19}/></span><div className="report-info"><b>{i.branchName}</b><small>{i.date} · {i.inspector} · {i.type}</small></div><div className="report-result"><b>{result.score}%</b><small>{result.classification}</small></div><Link href={`/reports/${i.id}`} className="button button-outline button-small" data-testid={`open-report-${i.id}`}>فتح التقرير <ArrowLeft size={14}/></Link></div>; })}</div></Card> : <Card><EmptyState icon={FileText} title="لا توجد تقارير مكتملة" text="بعد إنهاء الزيارة ستجد التقرير هنا، جاهزاً للطباعة من المتصفح." action={<Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/></Card>}</div>;
 }
 
+function CelebrationGate({ inspection, count }: { inspection: Inspection; count: number }) {
+  const [open, setOpen] = useState(() => { try { return sessionStorage.getItem('rq-celebrate') === inspection.id; } catch { return false; } });
+  const [banner, setBanner] = useState(open);
+  useEffect(() => { if (open) try { sessionStorage.removeItem('rq-celebrate'); } catch { /* ignore */ } }, []);
+  return <>{open && <SubmitCelebration inspection={inspection} visitCount={count} onClose={() => setOpen(false)}/>}{banner && !open && <div className="submitted-banner no-print"><b>أُرسلت الزيارة للاعتماد</b><span>رقم الزيارة {inspection.number ?? '—'} · سيصل التقرير لمدير الجودة</span><button type="button" onClick={() => setBanner(false)} aria-label="إغلاق"><X size={14}/></button></div>}</>;
+}
+
 function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, setLocation] = useLocation();
   const [match, params] = useRoute('/reports/:id');
   const inspection = match ? data.inspections.find(i => i.id === params?.id) : undefined;
   if (!inspection) return <div className="page-content"><Link href="/reports" className="text-link"><ArrowRight size={15}/> عودة للتقارير</Link><EmptyState title="التقرير غير موجود" text="قد تكون البيانات قد حذفت من هذا الجهاز."/></div>;
-  const celebrateId = (() => { try { return sessionStorage.getItem('rq-celebrate'); } catch { return null; } })();
   const score = calculateScore(inspection.questionSnapshot, inspection.answers);
   const findings = inspection.questionSnapshot.filter(q => inspection.answers[q.id]?.value === 'fail' || inspection.answers[q.id]?.initialValue === 'fail');
   const sections = [...new Set(inspection.questionSnapshot.map(q => q.section))];
   return <div className="page-content report-page"><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><ExportBar inspection={inspection} actions={data.actions.filter(x => x.inspectionId === inspection.id)}/><Link href={`/inspection/${inspection.id}/baristas`} className="button button-outline">تقييم الباريستا</Link></div><article className="print-report">
-    <Celebrate fire={celebrateId === inspection.id ? 1 : 0}/>{celebrateId === inspection.id && (() => { try { sessionStorage.removeItem('rq-celebrate'); } catch { /* ignore */ } return <div className="submitted-banner no-print"><b>أُرسلت الزيارة للاعتماد</b><span>رقم الزيارة {inspection.number ?? '—'} · سيصل التقرير لمدير الجودة</span></div>; })()}<div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div><header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
+    <CelebrationGate inspection={inspection} count={data.inspections.filter(x => x.status === 'finalized' && (inspection.inspectorUid ? x.inspectorUid === inspection.inspectorUid : x.inspector === inspection.inspector)).length}/><div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div><header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
     <div className={`report-score cls-${score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : 'good'}`}><div><small>النتيجة الإجمالية</small><strong><CountUp to={score.score} suffix="%"/></strong><em className="cls-badge">{score.classification}</em><span>{score.classification} · {score.criticalFailures ? 'تجاوز حرج يغيّر التصنيف' : 'النتيجة حسب الأوزان'}</span></div><div className="report-score-note"><b>ملخص النتائج</b><p>{inspection.questionSnapshot.length - findings.length} مطابق · {findings.length} ملاحظة · {inspection.questionSnapshot.length} سؤالاً</p><p>حرج {findings.filter(q => inspection.answers[q.id]?.severity === 'Critical').length} · رئيسي {findings.filter(q => inspection.answers[q.id]?.severity === 'Major').length} · بسيط {findings.filter(q => inspection.answers[q.id]?.severity === 'Minor').length} · متكرر {findings.filter(q => inspection.answers[q.id]?.recurring).length}</p><p>الأوزان: حرج {WEIGHTS.Critical} · رئيسي {WEIGHTS.Major} · بسيط {WEIGHTS.Minor}</p></div></div>
     <section className="exec-summary"><h2 className="report-section-title">الملخص التنفيذي</h2>
       <p className="score-explain">{explainScore(score.score, score.classification, score.criticalFailures)}</p>
@@ -280,6 +319,7 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
       {findings.length > 0 && <div className="exec-findings">{(['Critical', 'Major', 'Minor'] as const).map(sev => { const list = findings.filter(q => q.severity === sev); return list.length ? <div key={sev} className={`exec-sev ${sev.toLowerCase()}`}><b>{sev === 'Critical' ? 'حرجة' : sev === 'Major' ? 'رئيسية' : 'ثانوية'} ({list.length}) · التصحيح خلال {sev === 'Critical' ? '24 ساعة' : sev === 'Major' ? '72 ساعة' : '7 أيام'}</b>{list.map(q => <span key={q.id}>#{q.id} {q.title}{inspection.answers[q.id]?.recurring ? ' ↻' : ''}</span>)}</div> : null; })}</div>}
       {inspection.previous && <p className="exec-prev">الزيارة السابقة ({inspection.previous.date.slice(0, 10)}): {inspection.previous.score ?? '—'}% · {inspection.previous.classification ?? '—'}{score.score != null && inspection.previous.score != null ? ` — التغيّر ${score.score - inspection.previous.score >= 0 ? '+' : ''}${(score.score - inspection.previous.score).toFixed(1)} نقطة` : ''}</p>}
     </section>
+    <BeforeAfter current={inspection} previous={previousInspection(data.inspections.filter(x => x.date < inspection.date), inspection.branchId, inspection.id)}/>
     <h2 className="report-section-title">النتائج حسب القسم</h2>
     {sections.map(section => <section className="report-section" key={section}><h3>{section}</h3>{inspection.questionSnapshot.filter(q => q.section === section).map(q => { const a = inspection.answers[q.id]; const wasFailed = a.value === 'fail' || a.initialValue === 'fail'; return <div className="report-finding" key={q.id}><span className={`finding-mark ${wasFailed ? 'failed' : a.value === 'na' ? 'na' : 'passed'}`}>{wasFailed ? '!' : a.value === 'na' ? '—' : '✓'}</span><div><b>{q.id}. {q.title}</b><small>{q.criterion}</small>{wasFailed && <p>{a.observation || 'لم تسجل ملاحظة تفصيلية.'}{a.value !== 'fail' ? (a.correctedDuringVisit ? ` — تم التصحيح خلال الزيارة: ${a.correctionNote || 'تم تسجيل التصحيح.'}` : ' — تم تعديل الحالة، دون تأكيد تسجيل التصحيح. الإخفاق الأولي محفوظ.') : ''}{a.recommendation && ` — التوصية: ${a.recommendation}`}</p>}{a.attachments.filter(img => !img.type.startsWith('video/') || img.data).map(img => <figure className="report-evidence" key={img.id}>{img.type.startsWith('video/') ? <video className="no-print" src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || 'دليل مرفق'}/>}{img.caption && <figcaption>{img.caption}</figcaption>}</figure>)}</div><StatusPill tone={a.value === 'fail' ? 'red' : a.value === 'na' ? 'neutral' : 'green'}>{a.value === 'fail' ? 'غير مطابق' : a.value === 'na' ? 'لا ينطبق' : 'مطابق حالياً'}</StatusPill></div>; })}</section>)}
     <h2 className="report-section-title">خطة الإجراءات</h2>{data.actions.filter(a => a.inspectionId === inspection.id).length ? data.actions.filter(a => a.inspectionId === inspection.id).map(a => <div className="report-action" key={a.id}><div><b>{a.title}</b><small>{a.description}</small></div><span>{a.responsible || 'دون مسؤول'} · {a.dueDate || 'دون موعد'} · {a.status}</span></div>) : <p className="muted-text">لا توجد إجراءات مرتبطة بهذه الزيارة.</p>}
@@ -376,7 +416,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
       setNearNote(`أقرب فرع: ${best.b.name} (${fmtKm(best.km)})${best.km > 0.5 ? ' — لست قريباً بما يكفي للبدء تلقائياً، تأكد من الفرع ثم اضغط «حفظ وبدء الفحص».' : ' — أدخل اسم المفتش ثم ابدأ.'}`);
     }, () => { setLocating(false); setError('لم نتمكن من معرفة موقعك. اسمح للمتصفح بالوصول للموقع أو اختر الفرع من الخريطة.'); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
   };
-  useEffect(() => { if (new URLSearchParams(window.location.search).get('quick') === '1') quickStart(); /* eslint-disable-next-line */ }, []);
+  useEffect(() => { const q = new URLSearchParams(window.location.search); if (q.get('quick') === '1') quickStart(); const b = q.get('branch'); if (b && activeBranches.some(x => x.id === b)) form.setValue('branchId', b, { shouldValidate: true }); /* eslint-disable-next-line */ }, [activeBranches.length]);
   return <div className="page-content narrow-page"><Link href="/" className="back-link"><ArrowRight size={16}/> الرئيسية</Link><PageTitle eyebrow="زيارة جديدة" title="بيانات الجولة" detail="اختر الفرع وتأكد من بيانات الزيارة، ثم ابدأ الفحص. تُحفظ كل إجابة تلقائياً."/>
     <button type="button" className="quick-start" onClick={quickStart} disabled={locating} data-testid="button-quick-start"><span className="qs-ico"><MapPin size={22}/></span><span><b>{locating ? 'جارٍ تحديد موقعك…' : 'ابدأ زيارة في أقرب فرع'}</b><small>ضغطة واحدة: الفرع والتاريخ واسمك تُعبّأ تلقائياً</small></span></button>{nearNote && <div className="alert alert-info quick-note"><Info size={16}/>{nearNote}</div>}
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(v => start(v))}><div className="form-grid">
@@ -393,9 +433,10 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
 function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, params] = useRoute('/inspection/:id');
   const id = params?.id || '';
-  const inspection = data.inspections.find(i => i.id === id);
+  const inspection = data.inspections.find(i => i.id === id) ?? data.training.find(i => i.id === id);
   const [, setLocation] = useLocation();
   const [answers, setAnswers] = useState<Record<number, Answer>>(inspection?.answers || {});
+  const [annot, setAnnot] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [review, setReview] = useState(false);
   const [message, setMessage] = useState('');
@@ -493,13 +534,14 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const liveScore = calculateScore(answeredQs, answers);
   const failMissing = questions.filter(item => answers[item.id]?.value === 'fail' && !answers[item.id]?.observation.trim());
   const photoMissing = questions.filter(item => needsPhoto(item.id));
-  const canFinalize = score.score !== null && failMissing.length === 0 && photoMissing.length === 0 && signaturesComplete(signatures);
+  const canFinalize = score.score !== null && failMissing.length === 0 && photoMissing.length === 0 && (signaturesComplete(signatures) || Boolean(inspection.training));
   const finalize = async () => {
     if (submitLock.current) return; // ignore a second tap while the first submit is still running
     submitLock.current = true; setSubmitting(true);
     try { await finalizeInner(); } finally { submitLock.current = false; setSubmitting(false); }
   };
   const finalizeInner = async () => {
+    if (inspection.training) { if (score.unanswered.length) { setMessage(`أكمل البنود المتبقية (${score.unanswered.length}).`); setReview(false); setIndex(questions.findIndex(x => score.unanswered.includes(x.id))); return; } try { sessionStorage.setItem('rq-training-done', String(score.score ?? '')); } catch { /* ignore */ } await remove('inspections', inspection.id); await data.refresh(); setLocation('/'); return; }
     if (score.unanswered.length) { setMessage(`أكمل الأسئلة المطلوبة أولاً. المتبقي ${score.unanswered.length}.`); setReview(false); setIndex(questions.findIndex(x => score.unanswered.includes(x.id))); return; }
     if (failMissing.length) { setMessage(`أضف وصف الملاحظة للسؤال رقم ${failMissing[0].id}.`); setReview(false); setIndex(questions.findIndex(x => x.id === failMissing[0].id)); return; }
     if (photoMissing.length) { setMessage(`البند ${photoMissing[0].id} يتطلب صورة دليل.`); setReview(false); setIndex(questions.findIndex(x => x.id === photoMissing[0].id)); return; }
@@ -517,7 +559,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     const item: ActionItem = { id: newId(), title: `${question.title} — ${inspection.branchName}`, description: a.observation, branchName: inspection.branchName, branchId: inspection.branchId, questionId: question.id, inspectionId: inspection.id, responsible, dueDate: dueDate || defaultDueDate(question.severity), status: responsible ? 'مُسند' : 'مفتوح', severity: question.severity, recommendation: a.recommendation, recurring: a.recurring, createdAt: stamp(), history: [{ status: responsible ? 'مُسند' : 'مفتوح', at: stamp(), by: inspection.inspector }], evidence:a.attachments.map(item => ({...item})) };
     await put('actions', item); await data.refresh(); setActionForm(null); setMessage('تم إنشاء الإجراء التصحيحي وربطه بالزيارة.');
   };
-  const selectPhoto = async (files: FileList | null) => {
+  const selectPhoto = async (files: FileList | null, autoAnnotate = false) => {
     if (!files) return;
     const readData = (blob: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(); r.readAsDataURL(blob); });
     // Always compress: keeps evidence readable (max 1600px) and small enough to sync for free (< ~600 KB).
@@ -544,6 +586,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     if (tooBig.length) setMessage('حجم الفيديو أكبر من 30 ميجابايت. صوّر مقطعاً أقصر (حتى 20 ثانية تقريباً).');
     const videos = await Promise.all([...files].filter(f => f.type.startsWith('video/') && f.size <= 30 * 1024 * 1024).map(async f => ({ id: newId(), name: f.name, type: f.type, data: await readData(f), caption: '' })));
     if (images.length || videos.length) update({ attachments: [...answer.attachments, ...images, ...videos] });
+    if (autoAnnotate && images[0]) setAnnot(images[0].id);
   };
   const updateCaption = (attachmentId: string, caption: string) => update({ attachments: answer.attachments.map(img => img.id === attachmentId ? { ...img, caption } : img) });
   const removePhoto = (attachmentId: string) => update({ attachments: answer.attachments.filter(img => img.id !== attachmentId) });
@@ -558,8 +601,9 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? (cloudEnabled && inspection && pendingUploadIds([inspection]).length ? '✓ محفوظ على الجهاز · بانتظار الرفع' : cloudEnabled ? '✓ محفوظ ومرفوع' : '✓ محفوظ على الجهاز') : 'جارٍ الحفظ…'}</div></div>
     <div className="runner-intro"><div><div className="eyebrow">{inspection.branchName} · {inspection.shift}</div><h1>{inspection.type}</h1><p>{inspection.inspector} <span>·</span> {inspection.date}</p></div><span className="question-counter">{answeredCount}<small> / {questions.length} مكتمل</small></span></div>
     <div className="progress-track"><span style={{ width: `${(answeredCount / questions.length) * 100}%` }}/></div>
+    {inspection.training && !review && <div className="training-banner"><b><GraduationCap size={16}/> زيارة تدريبية</b><span>{TRAINING_HINTS[Math.min(index, TRAINING_HINTS.length - 1)]}</span><small>لن تُحفظ في التقارير أو الإحصاءات.</small></div>}
     {message && <div className="alert alert-info"><Info size={16}/>{message}<button onClick={() => setMessage('')} aria-label="إغلاق"><X size={16}/></button></div>}
-    {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><ScoreRing score={score.score} label={score.classification || 'غير مكتمل'} tone={score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : score.classification ? 'good' : 'navy'}/><p className="score-explain">{explainScore(score.score, score.classification, score.criticalFailures)}</p><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div><SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>{!isFinal && <Button className="full-button" disabled={!canFinalize || submitting} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> إرسال للاعتماد</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>
+    {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><ScoreRing score={score.score} label={score.classification || 'غير مكتمل'} tone={score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : score.classification ? 'good' : 'navy'}/><p className="score-explain">{explainScore(score.score, score.classification, score.criticalFailures)}</p><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div>{!inspection.training && <SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>}{!isFinal && <Button className="full-button" disabled={!canFinalize || submitting} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> {inspection.training ? 'إنهاء التدريب' : 'إرسال للاعتماد'}</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>
        <div className="review-sections">{sectionGroups.map(section => <Card key={section} className="review-section-card"><div className="card-heading"><h3>{section}</h3><span>{questions.filter(x => x.section === section).filter(x => answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail').length} ملاحظة</span></div>{questions.filter(x => x.section === section).map(item => { const a = defaultAnswer(answers[item.id]); const failedInitially = a.value === 'fail' || a.initialValue === 'fail'; return <button className="review-question" key={item.id} disabled={isFinal} onClick={() => { setIndex(questions.findIndex(x => x.id === item.id)); setReview(false); }}><span className={`finding-mark ${failedInitially ? 'failed' : a.value === 'na' ? 'na' : a.value === 'pass' ? 'passed' : 'empty'}`}>{failedInitially ? '!' : a.value === 'pass' ? '✓' : a.value === 'na' ? '—' : '·'}</span><span>{item.id}. {item.title}</span><ChevronLeft size={15}/></button>; })}</Card>)}</div></div> :
     <div className="inspection-layout"><aside className="section-sidebar"><span className="eyebrow">أقسام الفحص</span>{sectionGroups.map((section, sIndex) => <button key={section} className={`section-jump ${q?.section === section ? 'current' : ''}`} onClick={() => setIndex(questions.findIndex(item => item.section === section))} data-testid={`jump-section-${sIndex}`}><span className="section-number">{String(sIndex + 1).padStart(2, '0')}</span><span>{section}</span><small>{questions.filter(x => x.section === section && answers[x.id]?.value != null).length}/{questions.filter(x => x.section === section).length}</small></button>)}<button className="review-link" onClick={() => setReview(true)}><FileCheck2 size={16}/> مراجعة الزيارة</button></aside>
     <div className="question-column" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -571,7 +615,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <SectionProgress questions={questions} values={Object.fromEntries(questions.map(x => [x.id, answers[x.id]?.value as string | null | undefined])) as Record<number, string | null | undefined>} current={q.section} onJump={qid => { setIndex(questions.findIndex(y => y.id === qid)); setMessage(''); }}/>
       <div className="heat-strip" aria-label="خريطة الزيارة">{sectionGroups.map(section => <div className="heat-group" key={section} title={section}>{questions.filter(x => x.section === section).map(x => { const v = answers[x.id]?.value; return <button type="button" key={x.id} aria-label={`البند ${x.id}`} onClick={() => { setIndex(questions.findIndex(y => y.id === x.id)); setMessage(''); }} className={`heat ${v === 'pass' ? 'p' : v === 'fail' ? 'f' : v === 'na' ? 'n' : ''} ${x.id === q.id ? 'cur' : ''} ${x.severity === 'Critical' ? 'crit' : ''}`}/>; })}</div>)}</div>
       <div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length} · اسحب للتنقل</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><div className={`sev-line ${q.severity.toLowerCase()}`}><span>{q.severity === 'Critical' ? 'حرج' : q.severity === 'Major' ? 'رئيسي' : 'ثانوي'}</span>وزن {WEIGHTS[q.severity]} · التصحيح خلال {q.severity === 'Critical' ? '24 ساعة' : q.severity === 'Major' ? '72 ساعة' : '7 أيام'}{q.severity === 'Critical' && <b> · الإخفاق يجعل الزيارة غير مقبولة</b>}</div>
-      {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(وفق نموذج الفحص)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · مقارنة بالمعيار المعتمد</div>}{hasRange && answer.actual !== undefined && (answer.actual < q.measurement.min! || answer.actual > q.measurement.max!) && answer.value !== 'fail' && <div className="nudge"><span>القراءة خارج النطاق المعتمد. هل البند غير مطابق؟</span><button type="button" onClick={() => choose('fail')}>تسجيل «غير مطابق»</button></div>}</div>; })()}
+      {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(وفق نموذج الفحص)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · مقارنة بالمعيار المعتمد</div>}{hasRange && answer.actual !== undefined && (answer.actual < q.measurement.min! || answer.actual > q.measurement.max!) && answer.value !== 'fail' && <div className="nudge"><span>القراءة خارج النطاق المعتمد. هل البند غير مطابق؟</span><button type="button" onClick={() => choose('fail')}>تسجيل «غير مطابق»</button></div>}</div>; })()}
       {q.inputType && q.inputType !== 'status' && <div className="typed-response"><div className="answer-label">قراءة إضافية <small>اختياري</small></div>{q.inputType === 'numeric' && !q.measurement && <input className="typed-input" type="number" inputMode="decimal" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} placeholder="أدخل القراءة" data-testid={`input-numeric-${q.id}`}/>}
         {q.inputType === 'text' && <textarea className="typed-input typed-text" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} placeholder="اكتب التفاصيل…" data-testid={`input-text-${q.id}`}/>}
         {q.inputType === 'single-choice' && <select className="typed-input" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} data-testid={`input-choice-${q.id}`}><option value="">اختر إجابة</option>{(q.options?.length ? q.options : ['خيار ١','خيار ٢','خيار ٣']).map(o => <option key={o}>{o}</option>)}</select>}
@@ -590,10 +634,10 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <div className="evidence-block">
         <div className="evidence-heading"><span><ImagePlus size={17}/> أدلة مصورة {appConfig.photoRequiredOnFail.includes(q.id) ? <em className="req-photo">مطلوبة عند عدم المطابقة</em> : <small>اختياري</small>}</span><label className="upload-button"><Plus size={16}/> إضافة صورة<input type="file" accept="image/*,video/*" multiple onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid={`input-photo-${q.id}`}/></label></div>
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو يُحفظ على هذا الجهاز فقط.</p>
-        {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <video src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button><input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
+        {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <video src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button>{!img.type.startsWith('video/') && <button type="button" className="ev-annot" onClick={() => setAnnot(img.id)} aria-label="تعليم الصورة"><PenLine size={14}/> {img.annotated ? 'تعديل التعليم' : 'علّم'}</button>}<input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
       </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</div></div>}
-    {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
+    {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files, answer.value === 'fail'); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
     {fieldMode && isPhone && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="toolbar" aria-label="أزرار الإجابة السريعة">
       <div className="ab-answers">{[['pass','مطابق',Check],['fail','غير مطابق',X],['na','لا ينطبق',CircleHelp]].map(([value,label,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`ab-btn ${value} ${answer.value === value ? 'chosen' : ''}`} data-testid={`answer-${value}-${q.id}`}><Icon size={22}/><b>{label as string}</b></button>)}</div>
       <div className="ab-tools">
@@ -604,6 +648,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         {index < questions.length - 1 ? <button type="button" className="ab-next" onClick={() => goNext()} data-testid="button-next-question" aria-label="التالي"><ArrowLeft size={18}/></button> : <button type="button" className="ab-next" onClick={() => setReview(true)} data-testid="button-review" aria-label="مراجعة وإنهاء"><FileCheck2 size={18}/></button>}
       </div>
     </div>, document.body)}
+    {annot && answer.attachments.find(a => a.id === annot) && <PhotoAnnotator src={answer.attachments.find(a => a.id === annot)!.data} onCancel={() => setAnnot(null)} onSave={d => { update({ attachments: answer.attachments.map(a => a.id === annot ? { ...a, data: d, annotated: true } : a) }); setAnnot(null); }}/>}
     {toast && <div className="field-toast" role="status"><span>{toast.text}</span><button onClick={() => { setIndex(toast.back); setToast(null); }}>تراجع</button></div>}
   </div>;
 }
@@ -695,6 +740,7 @@ function Router() {
     <Route path="/"><HomePage data={data}/></Route>
     <Route path="/visits"><VisitsPage data={data}/></Route>
     <Route path="/actions"><ActionsBoard data={data}/></Route>
+    <Route path="/priorities"><PrioritiesPage data={data}/></Route>
     <Route path="/branches"><BranchesPage data={data}/></Route>
     <Route path="/branches/:id"><BranchProfile data={data}/></Route>
     <Route path="/analytics"><AnalyticsPage data={data}/></Route>
