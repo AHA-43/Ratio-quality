@@ -1,0 +1,12 @@
+name: Resolve branch map links (one-off)
+on:
+  push:
+    branches: [claude/ratio-quality-requirements-pb9ouc]
+    paths: [scripts/src/resolve-map-links.py, .github/workflows/resolve-maps.yml]
+  workflow_dispatch:
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/src/resolve-map-links.py artifacts/ratio-quality/src/branches.master.json | sed 's/^/COORD /'
