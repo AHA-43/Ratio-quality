@@ -18,12 +18,12 @@ export function RatioMark({ size = 64, color = 'currentColor', draw = false, loo
 type IP = { size?: number; className?: string };
 const I = (children: React.ReactNode) => ({ size = 20, className = '' }: IP) =>
   <svg className={`r-icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>;
-export const RIconHome = I(<><path d="M3 6h6M4 6v4.5a8 8 0 0 0 14 5.3"/><circle cx="12.5" cy="6.5" r="3"/><circle cx="18" cy="12.5" r="3"/><path d="M11 15.5 20.5 6"/></>);
-export const RIconVisits = I(<><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 4V3h6v1"/><circle cx="10" cy="11" r="1.6"/><circle cx="14.2" cy="16" r="1.6"/><path d="M9 17.5 15.5 9.5"/></>);
-export const RIconActions = I(<><circle cx="12" cy="12" r="8.5"/><path d="m8.2 12.2 2.6 2.6 5-5.2"/><path d="M17.8 4.6 19.6 2.8"/></>);
-export const RIconReports = I(<><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 17v-3M12 17v-5M15 17v-7"/></>);
-export const RIconSettings = I(<><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/><path d="M5 19 19 5"/></>);
-export const RIconAnalytics = I(<><path d="M4 20h16"/><path d="M6 16v-3M10 16V9M14 16v-5M18 16V6"/><circle cx="18" cy="4" r="1.2"/></>);
+export const RIconHome = I(<><path d="M4 11.2 12 4l8 7.2V19a1.2 1.2 0 0 1-1.2 1.2H15v-5.4H9v5.4H5.2A1.2 1.2 0 0 1 4 19z"/></>);
+export const RIconVisits = I(<><path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z"/><path d="M8 6H6.2A1.2 1.2 0 0 0 5 7.2v12.6A1.2 1.2 0 0 0 6.2 21h11.6a1.2 1.2 0 0 0 1.2-1.2V7.2A1.2 1.2 0 0 0 17.8 6H16"/><path d="M8.8 12.2h6.4M8.8 16.2h4"/></>);
+export const RIconActions = I(<><circle cx="12" cy="12" r="8.6"/><path d="m8.2 12.3 2.6 2.7 5-5.4"/></>);
+export const RIconReports = I(<><path d="M7 3h7l5 5v11.8A1.2 1.2 0 0 1 17.8 21H7A1.2 1.2 0 0 1 5.8 19.8V4.2A1.2 1.2 0 0 1 7 3z"/><path d="M14 3v5h5"/><path d="M9.2 17.4v-2.6M12 17.4v-4.8M14.8 17.4v-3.4"/></>);
+export const RIconSettings = I(<><path d="M4 7.5h8.2M17.4 7.5H20M4 16.5h2.6M11.8 16.5H20"/><circle cx="14.8" cy="7.5" r="2.6"/><circle cx="9.2" cy="16.5" r="2.6"/></>);
+export const RIconAnalytics = I(<><path d="M4 20h16"/><path d="M6.5 16v-3.5M10.5 16V8.5M14.5 16v-5M18.5 16V5.5"/></>);
 
 /* ---------- count-up number ---------- */
 export function CountUp({ to, decimals = 1, duration = 1100, suffix = '' }: { to: number | null; decimals?: number; duration?: number; suffix?: string }) {

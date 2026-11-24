@@ -99,7 +99,7 @@ function AppShell({ children }: { children: ReactNode }) {
       </header>
       {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <main className="page-wrap">{children}</main>
-      <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><n.icon size={20}/><span>{n.label}</span></Link>)}</nav>
+      <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><span className="nav-ico"><n.icon size={22}/></span><span>{n.label}</span></Link>)}</nav>
     </div>
   </div>;
 }
