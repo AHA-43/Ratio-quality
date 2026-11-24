@@ -1,6 +1,6 @@
 // v2: pages are network-first (so a new deploy is picked up immediately); hashed assets are cache-first.
-const CACHE = 'ratio-quality-shell-v2';
-const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/brand/mark-white.png', '/brand/mark-navy.png', '/brand/logo-ar-white.png', '/brand/logo-ar-navy.png'];
+const CACHE = 'ratio-quality-shell-v3';
+const SHELL = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/brand/mark-white.png', '/brand/mark-navy.png', '/brand/logo-ar-white.png', '/brand/logo-ar-navy.png', '/fonts/thmanyahsans-Regular.woff2', '/fonts/thmanyahsans-Medium.woff2', '/fonts/thmanyahsans-Bold.woff2'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });

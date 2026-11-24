@@ -1,4 +1,8 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+@font-face { font-family: 'Thmanyah Sans'; src: url('/fonts/thmanyahsans-Light.woff2') format('woff2'); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('/fonts/thmanyahsans-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('/fonts/thmanyahsans-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('/fonts/thmanyahsans-Bold.woff2') format('woff2'); font-weight: 600 800; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Thmanyah Sans'; src: url('/fonts/thmanyahsans-Black.woff2') format('woff2'); font-weight: 900; font-style: normal; font-display: swap; }
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @plugin "@tailwindcss/typography";
@@ -141,7 +145,7 @@
   --chart-4: 218 43% 37%;
   --chart-5: 31 50% 55%;
 
-  --app-font-sans: 'IBM Plex Sans Arabic', sans-serif;
+  --app-font-sans: 'Thmanyah Sans', sans-serif;
   --app-font-serif: Georgia, serif;
   --app-font-mono: Menlo, monospace;
   --radius: 0.5rem; /* 8px */
@@ -436,7 +440,7 @@
 /* Ratio Quality — editorial field-notes / enterprise utility system */
 :root { color-scheme: light; --radius: 0.85rem; }
 * { box-sizing: border-box; }
-body { margin: 0; background: hsl(var(--background)); font-family: 'IBM Plex Sans Arabic', sans-serif; }
+body { margin: 0; background: hsl(var(--background)); font-family: 'Thmanyah Sans', sans-serif; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 a { color: inherit; text-decoration: none; }
@@ -444,7 +448,7 @@ a { color: inherit; text-decoration: none; }
 .side-rail { position: fixed; z-index: 30; inset: 0 0 0 auto; width: 246px; display: flex; flex-direction: column; padding: 26px 17px 20px; color: hsl(var(--sidebar-foreground)); background: hsl(var(--sidebar)); }
 .brand-lockup { display: flex; gap: 11px; align-items: center; padding: 0 8px 27px; color: #f6f4eb; }
 .brand-mark { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 12px; background: #b6d6c2; color: #1d3a31; flex-shrink: 0; }
-.brand-lockup b,.report-brand b { display: block; font-family: 'IBM Plex Sans Arabic', sans-serif; letter-spacing: -.03em; font-size: 15px; }
+.brand-lockup b,.report-brand b { display: block; font-family: 'Thmanyah Sans', sans-serif; letter-spacing: -.03em; font-size: 15px; }
 .brand-lockup small,.report-brand small { display: block; margin-top: 1px; font-size: 11px; color: #b8c6c2; }
 .rail-label { color: #92a39e; font-size: 10px; font-weight: 600; padding: 10px 12px 9px; letter-spacing: .06em; }
 .rail-link { min-height: 46px; display: flex; align-items: center; gap: 12px; padding: 0 13px; border-radius: 10px; color: #c9d2ce; font-size: 14px; font-weight: 500; transition: background .18s,color .18s,transform .18s; }
