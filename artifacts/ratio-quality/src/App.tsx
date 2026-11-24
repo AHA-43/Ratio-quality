@@ -25,9 +25,12 @@ import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { AskName, CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { explainScore, nameKey } from './features/text';
+const ExecutivePage = lazyRetry(() => import('./features/executive').then(m => ({ default: m.ExecutivePage })));
 const PrioritiesPage = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.PrioritiesPage })));
 const HomePriorityCard = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.HomePriorityCard })));
 import { PhotoAnnotator } from './features/photo-annotator';
+import { VisitBrief, repeatQuestions } from './features/visit-brief';
+import { SearchPalette, openSearch } from './features/palette';
 import { InstallCard } from './features/install-guide';
 import { DisplayMenu, initDisplay } from './features/display';
 import { TRAINING_HINTS, trainingQuestions } from './features/training';
@@ -60,6 +63,7 @@ const nav = [
   { href: '/settings', label: 'الإعدادات', icon: RIconSettings },
 ];
 const moreNav = [
+  { href: '/executive', label: 'لوحة الإدارة' },
   { href: '/priorities', label: 'الأولويات وخطة الأسبوع' },
   { href: '/branches', label: 'أداء الفروع' },
   { href: '/analytics', label: 'التحليلات' },
@@ -143,7 +147,7 @@ function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <button className="icon-button menu-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="فتح القائمة" data-testid="button-menu"><MoreHorizontal size={22}/></button>
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
-        <div className="topbar-right"><DisplayMenu/>{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
+        <div className="topbar-right"><button type="button" className="icon-button search-btn" onClick={openSearch} aria-label="بحث" data-testid="button-search"><Search size={18}/></button><DisplayMenu/>{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {updateReady && <div className="update-banner" role="status"><span>تم تحديث التطبيق إلى نسخة أحدث.</span><button type="button" onClick={() => window.location.reload()}>تحديث الآن</button></div>}
       {storageWarn && <div className="storage-banner" role="alert"><b>مساحة جهازك شبه ممتلئة ({storageWarn.pct}%)</b><span>ارفع الزيارات المعلّقة، ثم احذف المسودات القديمة والتجريبية لتفادي فقدان التقدّم.</span></div>}
@@ -472,6 +476,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, setLocation] = useLocation();
   const [answers, setAnswers] = useState<Record<number, Answer>>(inspection?.answers || {});
   const [annot, setAnnot] = useState<string | null>(null);
+  const [briefOpen, setBriefOpen] = useState(false);
   const [index, setIndex] = useState(0);
   const [review, setReview] = useState(false);
   const [message, setMessage] = useState('');
@@ -506,6 +511,13 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   }, [answers, signatures, inspection?.id]);
   const [, tick] = useState(0);
   useEffect(() => { const t = window.setInterval(() => tick(n => n + 1), 3000); return () => window.clearInterval(t); }, []);
+  const branchOpenActions = data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === inspection?.branchId || a.branchName === inspection?.branchName));
+  useEffect(() => {
+    if (!inspection || inspection.status !== 'draft' || inspection.training || Object.keys(inspection.answers).length) return;
+    try { if (sessionStorage.getItem(`rq-brief-${inspection.id}`) || localStorage.getItem('rq-coach') !== 'done' || localStorage.getItem('rq-brief') === 'off') return; } catch { return; }
+    if (prev || branchOpenActions.length) setBriefOpen(true);
+  }, [inspection?.id]);
+  const closeBrief = () => { setBriefOpen(false); try { sessionStorage.setItem(`rq-brief-${id}`, '1'); } catch { /* ignore */ } };
   const isPhone = useMedia('(max-width: 767px)');
   const kbOpen = useKeyboardOpen();
   const fieldMode = Boolean(inspection) && inspection?.status === 'draft' && !review;
@@ -630,6 +642,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const isFinal = inspection.status === 'finalized';
   return <div className="page-content runner-page">
     {inspection.status === 'draft' && !review && <CoachMarks/>}
+    {briefOpen && <VisitBrief inspection={inspection} prev={prev} actions={branchOpenActions} onStart={closeBrief} onRepeat={() => { const first = repeatQuestions(questions, prev)[0]; if (first) setIndex(questions.findIndex(x => x.id === first.id)); closeBrief(); }}/>}
     {inspection.status === 'draft' && conflict && <ConflictResolver mine={answers} theirs={conflict} onResolve={merged => { setConflict(null); setAnswers(merged); }}/>}
     {inspection.amendmentOf && inspection.status === 'draft' && <div className="alert amend-banner">نسخة تصحيحية رقم {inspection.revision} للتقرير المعتمد — السبب: {inspection.amendmentReason}. التقرير الأصلي محفوظ كما هو.</div>}
     {inspection.workflow === 'returned' && <div className="alert alert-danger">أُعيدت هذه الزيارة للتصحيح{inspection.returnedBy ? ` من ${inspection.returnedBy.name}` : ''}: {inspection.returnReason}</div>}
@@ -772,10 +785,11 @@ function SettingsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
 
 function Router() {
   const data = useLocalData();
-  return <RoutedErrorBoundary><AppShell><Suspense fallback={<div className="page-content route-loading" aria-busy="true"><span className="rl-bar"/><div className="skeleton-list"><i/><i/><i/></div></div>}><Switch>
+  return <RoutedErrorBoundary><AppShell><SearchPalette data={data} pages={[...nav, ...moreNav]}/><Suspense fallback={<div className="page-content route-loading" aria-busy="true"><span className="rl-bar"/><div className="skeleton-list"><i/><i/><i/></div></div>}><Switch>
     <Route path="/"><HomePage data={data}/></Route>
     <Route path="/visits"><VisitsPage data={data}/></Route>
     <Route path="/actions"><ActionsBoard data={data}/></Route>
+    <Route path="/executive"><ExecutivePage data={data}/></Route>
     <Route path="/priorities"><PrioritiesPage data={data}/></Route>
     <Route path="/branches"><BranchesPage data={data}/></Route>
     <Route path="/branches/:id"><BranchProfile data={data}/></Route>

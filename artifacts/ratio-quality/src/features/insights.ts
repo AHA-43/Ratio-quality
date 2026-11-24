@@ -111,3 +111,64 @@ export function planWeek(input: { inspections: Inspection[]; branches: Branch[];
   }
   return out;
 }
+
+/* ---------------- executive summary (management dashboard) ---------------- */
+export type ExecSummary = {
+  days: number; visits: number; branchesVisited: number; branchesTotal: number; coveragePct: number;
+  avg: number | null; prevAvg: number | null; delta: number | null; criticalFailures: number;
+  classCounts: Record<'ممتاز' | 'جيد' | 'يحتاج تحسين' | 'غير مقبول', number>;
+  monthly: { key: string; avg: number; n: number }[];
+  sections: { name: string; avg: number }[];
+  best: { branch: Branch; score: number }[]; worst: { branch: Branch; score: number }[];
+  actionsTotal: number; actionsClosedPct: number | null; avgCloseDays: number | null; overdue: number;
+  narrative: string[];
+};
+/** Percent with direction marks so Arabic text doesn't flip it to %92. */
+export const pct = (n: number | string) => `\u200E${n}%\u200E`;
+const mean = (xs: number[]) => xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+const r1 = (n: number) => Math.round(n * 10) / 10;
+
+export function executiveSummary(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, days = 90, now = Date.now()): ExecSummary {
+  const real = input.inspections.filter(isReal);
+  const active = input.branches.filter(b => !b.archived && !b.demo);
+  const inWin = (i: Inspection, from: number, to: number) => { const age = now - dateOf(i); return age >= from * DAY && age < to * DAY; };
+  const cur = real.filter(i => inWin(i, 0, days)), prev = real.filter(i => inWin(i, days, days * 2));
+  const scoreOf = (i: Inspection) => calculateScore(i.questionSnapshot, i.answers);
+  const scores = cur.map(scoreOf), pscores = prev.map(scoreOf);
+  const avg = mean(scores.filter(s => s.score !== null).map(s => s.score!)), prevAvg = mean(pscores.filter(s => s.score !== null).map(s => s.score!));
+  const classCounts = { 'ممتاز': 0, 'جيد': 0, 'يحتاج تحسين': 0, 'غير مقبول': 0 };
+  for (const s of scores) if (s.classification && s.classification in classCounts) classCounts[s.classification as keyof typeof classCounts]++;
+  const visited = new Set(cur.map(i => i.branchId)); const branchesVisited = active.filter(b => visited.has(b.id)).length;
+
+  const byMonth = new Map<string, number[]>();
+  for (const i of real) { const s = scoreOf(i).score; if (s === null) continue; const k = new Date(dateOf(i)).toISOString().slice(0, 7); (byMonth.get(k) ?? byMonth.set(k, []).get(k)!).push(s); }
+  const monthly = [...byMonth.entries()].sort().slice(-6).map(([key, v]) => ({ key, avg: r1(mean(v)!), n: v.length }));
+
+  const secMap = new Map<string, number[]>();
+  for (const i of cur) for (const name of new Set(i.questionSnapshot.map(q => q.section))) { const r = calculateScore(i.questionSnapshot.filter(q => q.section === name), i.answers); if (r.score !== null) (secMap.get(name) ?? secMap.set(name, []).get(name)!).push(r.score); }
+  const sections = [...secMap.entries()].map(([name, v]) => ({ name, avg: r1(mean(v)!) })).sort((a, b) => b.avg - a.avg);
+
+  const latest = new Map<string, { b: Branch; score: number }>();
+  for (const b of active) { const l = real.filter(i => i.branchId === b.id).sort((x, y) => dateOf(y) - dateOf(x))[0]; const s = l ? scoreOf(l).score : null; if (s !== null) latest.set(b.id, { b, score: s }); }
+  const ranked = [...latest.values()].sort((a, b) => b.score - a.score);
+  const best = ranked.slice(0, 5).map(x => ({ branch: x.b, score: x.score })), worst = ranked.filter(x => x.score < 90).slice(-5).reverse().map(x => ({ branch: x.b, score: x.score }));
+
+  const acts = input.actions; const closed = acts.filter(a => a.status === 'مغلق');
+  const closeDays = closed.map(a => (Date.parse(a.verifiedAt ?? '') - Date.parse(a.createdAt ?? '')) / DAY).filter(d => Number.isFinite(d) && d >= 0);
+  const delta = avg !== null && prevAvg !== null ? r1(avg - prevAvg) : null;
+  const critical = scores.reduce((a, s) => a + s.criticalFailures, 0);
+
+  const narrative: string[] = [];
+  if (!cur.length) narrative.push(`لا توجد زيارات مكتملة خلال آخر ${days} يوماً.`);
+  else {
+    narrative.push(`متوسط الالتزام ${pct(r1(avg ?? 0))} عبر ${cur.length} زيارة في ${branchesVisited} فرع${delta !== null ? `، ${delta >= 0 ? 'بتحسّن' : 'بتراجع'} ${Math.abs(delta)} نقطة عن الفترة السابقة` : ''}.`);
+    if (active.length) narrative.push(`تغطية الزيارات ${pct(Math.round(branchesVisited / active.length * 100))} من الفروع النشطة (${branchesVisited} من ${active.length}).`);
+    if (critical) narrative.push(`سُجّل ${critical} إخفاق حرج يتطلب متابعة عاجلة.`); else narrative.push('لا توجد إخفاقات حرجة في هذه الفترة.');
+    if (sections.length > 1) narrative.push(`أقوى الأقسام «${sections[0].name}» (${pct(sections[0].avg)}) وأضعفها «${sections[sections.length - 1].name}» (${pct(sections[sections.length - 1].avg)}).`);
+    if (worst.length && worst[0].score < 80) narrative.push(`الأحوج للمتابعة: ${worst.slice(0, 3).map(w => `${w.branch.name} (${pct(Math.round(w.score))})`).join('، ')}.`);
+  }
+  const od = acts.filter(a => a.status !== 'مغلق' && a.dueDate && a.dueDate < new Date(now).toISOString().slice(0, 10)).length;
+  if (acts.length) narrative.push(`نسبة إغلاق الإجراءات ${pct(Math.round(closed.length / acts.length * 100))}${od ? ` ويوجد ${od} إجراء متأخر` : ''}.`);
+
+  return { days, visits: cur.length, branchesVisited, branchesTotal: active.length, coveragePct: active.length ? Math.round(branchesVisited / active.length * 100) : 0, avg: avg === null ? null : r1(avg), prevAvg: prevAvg === null ? null : r1(prevAvg), delta, criticalFailures: critical, classCounts, monthly, sections, best, worst, actionsTotal: acts.length, actionsClosedPct: acts.length ? Math.round(closed.length / acts.length * 100) : null, avgCloseDays: closeDays.length ? r1(mean(closeDays)!) : null, overdue: od, narrative };
+}

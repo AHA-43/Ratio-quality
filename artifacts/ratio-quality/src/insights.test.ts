@@ -36,3 +36,13 @@ test('plan: skips Friday/Saturday and groups the nearest branches on the same da
   const ids = plan[0].items.map(x => x.branch.id).sort(); assert.ok(ids.includes('A') || ids.includes('B'));
   assert.equal(plan.flatMap(d => d.items).length, 4);
 });
+
+import { executiveSummary } from './features/insights.ts';
+test('executive summary: averages, delta vs previous period, coverage and narrative', () => {
+  const all = [insp('a', 'A', 10, []), insp('b', 'B', 20, [1, 2, 3]), insp('c', 'A', 120, [1, 2, 3])];
+  const s = executiveSummary({ inspections: all, branches: [br('A'), br('B'), br('C')], actions: [] }, 90, NOW);
+  assert.equal(s.visits, 2); assert.equal(s.branchesVisited, 2); assert.equal(s.coveragePct, 67);
+  assert.ok(s.avg !== null && s.prevAvg !== null && s.delta !== null && s.delta > 0);
+  assert.ok(s.narrative.some(x => x.includes('متوسط الالتزام')) && s.narrative.some(x => x.includes('تغطية الزيارات')));
+  assert.equal(executiveSummary({ inspections: [], branches: [], actions: [] }, 90, NOW).narrative[0].includes('لا توجد زيارات'), true);
+});

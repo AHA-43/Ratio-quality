@@ -11,7 +11,7 @@ const step = async (name, fn) => { try { await fn(); results.push(`PASS | ${name
 
 const b = await chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
-await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} });
+await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); localStorage.setItem('rq-brief', 'off'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} });
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
 const csp = []; p.on('console', m => { const t = m.text(); if (/Content Security Policy|Report Only|Refused to/i.test(t)) csp.push(t.slice(0, 220)); });
 let id = '';
