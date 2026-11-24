@@ -456,3 +456,10 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
 .mail-history div { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #e4ded4; } .mail-history small { color: #6b6b99; }
 .std-history { margin: 10px 0; font-size: 12px; } .std-history summary { font-weight: 700; cursor: pointer; } .std-history > div { padding: 8px 0; border-bottom: 1px dashed #e4ded4; } .std-history small { color: #6b6b99; margin-inline-start: 8px; } .std-history ul { margin: 4px 0 0; padding-inline-start: 18px; }
 .evidence-item video, .report-evidence video { width: 100%; max-height: 220px; border-radius: 10px; background: #000; } .video-local { position: absolute; top: 6px; inset-inline-start: 6px; font-size: 10px; background: #07014fcc; color: #fff; padding: 2px 8px; border-radius: 8px; } .evidence-item { position: relative; }
+.conflict { display: grid; gap: 8px; margin-bottom: 14px; padding: 14px; border-radius: 16px; background: #fff4e5; border: 1.5px solid #e8b46a; }
+.conflict b { color: #7a4a12; font-size: 15px; } .conflict p { margin: 0; color: #7a4a12; font-size: 13px; }
+.conflict-row { display: grid; grid-template-columns: auto 1fr 1fr; gap: 6px; align-items: stretch; font-size: 12px; }
+.conflict-row span { align-self: center; font-weight: 700; }
+.conflict-row button { text-align: start; border: 1.5px solid #e4ded4; background: #fff; border-radius: 10px; padding: 8px; min-height: 44px; }
+.conflict-row button.on { border-color: var(--navy); background: var(--corn-soft); font-weight: 700; }
+@media (max-width: 520px) { .conflict-row { grid-template-columns: 1fr; } }

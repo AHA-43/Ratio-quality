@@ -3,6 +3,7 @@ import type { ActionItem, Inspection } from '../data';
 import { useEffect } from 'react';
 import { audit, listMail, logMail, useConfig, type MailEntry } from '../session';
 import { deliver, exportPptx, exportXlsx, mailtoLink } from './exports';
+import { exportTemplatePptx } from './template-pptx';
 
 export function ExportBar({ inspection, actions }: { inspection: Inspection; actions: ActionItem[] }) {
   const [busy, setBusy] = useState('');
@@ -12,10 +13,10 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   const [listId, setListId] = useState('');
   const chosen = lists.find(l => l.id === listId);
   const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
-  const run = async (kind: 'xlsx' | 'pptx', share: boolean) => {
+  const run = async (kind: 'xlsx' | 'pptx' | 'tpl', share: boolean) => {
     setBusy(kind); setErr('');
     try {
-      const out = kind === 'xlsx' ? await exportXlsx(inspection, actions) : await exportPptx(inspection, actions);
+      const out = kind === 'xlsx' ? await exportXlsx(inspection, actions) : kind === 'tpl' ? await exportTemplatePptx(inspection, actions) : await exportPptx(inspection, actions);
       await deliver(out.blob, out.name, share);
       logMail({ inspectionId: inspection.id, channel: share ? 'share' : 'download', file: out.name });
       audit(`report.export.${kind}`, 'inspections', inspection.id, { share });
@@ -25,7 +26,8 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   return <div className="export-bar no-print">
     <button className="button button-outline" disabled={!!busy} onClick={() => window.print()}>PDF / طباعة</button>
     <button className="button button-outline" disabled={!!busy} onClick={() => run('xlsx', false)}>{busy === 'xlsx' ? 'جارٍ الإنشاء…' : 'Excel'}</button>
-    <button className="button button-outline" disabled={!!busy} onClick={() => run('pptx', false)}>{busy === 'pptx' ? 'جارٍ الإنشاء…' : 'PowerPoint'}</button>
+    <button className="button button-outline" disabled={!!busy} onClick={() => run('tpl', false)}>{busy === 'tpl' ? 'جارٍ الإنشاء…' : 'PowerPoint · القالب المعتمد'}</button>
+    <button className="button button-outline" disabled={!!busy} onClick={() => run('pptx', false)}>{busy === 'pptx' ? 'جارٍ الإنشاء…' : 'PowerPoint · عرض مفصّل'}</button>
     {canShare && <button className="button button-soft" disabled={!!busy} onClick={() => run('pptx', true)}>مشاركة العرض</button>}
     {canShare && <button className="button button-soft" disabled={!!busy} onClick={() => run('xlsx', true)}>مشاركة Excel</button>}
     {lists.length > 0 && <select className="typed-input recip-select" value={listId} onChange={e => setListId(e.target.value)} aria-label="قائمة المستلمين"><option value="">اختر المستلمين…</option>{lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}</select>}

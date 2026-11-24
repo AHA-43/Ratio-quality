@@ -15,11 +15,12 @@ import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
 import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
+import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -328,6 +329,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const appConfig = useConfig();
   const needsPhoto = (qid: number) => appConfig.photoRequiredOnFail.includes(qid) && answers[qid]?.value === 'fail' && !(answers[qid]?.attachments?.length);
   const [autoAdvance, setAutoAdvance] = useState(() => { try { return localStorage.getItem('rq-auto') !== 'off'; } catch { return true; } });
+  const [conflict, setConflict] = useState<Inspection | null>(() => getConflict(id));
   const [toast, setToast] = useState<{ text: string; back: number } | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
   const [signatures, setSignatures] = useState<NonNullable<Inspection['signatures']>>(inspection?.signatures || {});
@@ -348,6 +350,12 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     }, 450);
     return () => window.clearTimeout(timer);
   }, [answers, signatures, inspection?.id]);
+  // Hooks must run on every render (also while the draft is still loading on another device).
+  useShortcuts({
+    '1': () => choose('pass'), '2': () => choose('fail'), '3': () => choose('na'),
+    ArrowLeft: () => { goNext(); }, ArrowRight: () => { if (index > 0) { setIndex(index - 1); setMessage(''); } },
+    Enter: () => { goNext(); },
+  }, Boolean(inspection) && !review && inspection?.status === 'draft');
   if (!inspection) return <div className="page-content"><EmptyState title="المسودة غير موجودة" text="قد تكون حذفت أو استوردت على جهاز آخر." action={<Link href="/visits" className="button button-soft">العودة للزيارات</Link>}/></div>;
   const update = (patch: Partial<Answer>, questionId = q.id) => setAnswers(old => {
     const previous = defaultAnswer(old[questionId]);
@@ -384,11 +392,6 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     if (Math.abs(dx) < 70 || Math.abs(dy) > 60) return;
     if (dx < 0) goNext(); else if (index > 0) { setIndex(index - 1); setMessage(''); }
   };
-  useShortcuts({
-    '1': () => choose('pass'), '2': () => choose('fail'), '3': () => choose('na'),
-    ArrowLeft: () => { goNext(); }, ArrowRight: () => { if (index > 0) { setIndex(index - 1); setMessage(''); } },
-    Enter: () => { goNext(); },
-  }, !review && inspection.status === 'draft');
   const answeredQs = questions.filter(x => answers[x.id]?.value != null);
   const liveScore = calculateScore(answeredQs, answers);
   const failMissing = questions.filter(item => answers[item.id]?.value === 'fail' && !answers[item.id]?.observation.trim());
@@ -447,6 +450,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const isFinal = inspection.status === 'finalized';
   return <div className="page-content runner-page">
     {inspection.status === 'draft' && !review && <CoachMarks/>}
+    {inspection.status === 'draft' && conflict && <ConflictResolver mine={answers} theirs={conflict} onResolve={merged => { setConflict(null); setAnswers(merged); }}/>}
     {inspection.amendmentOf && inspection.status === 'draft' && <div className="alert amend-banner">نسخة تصحيحية رقم {inspection.revision} للتقرير المعتمد — السبب: {inspection.amendmentReason}. التقرير الأصلي محفوظ كما هو.</div>}
     {inspection.workflow === 'returned' && <div className="alert alert-danger">أُعيدت هذه الزيارة للتصحيح{inspection.returnedBy ? ` من ${inspection.returnedBy.name}` : ''}: {inspection.returnReason}</div>}
     <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? 'محفوظ تلقائياً' : 'جارٍ الحفظ…'}</div></div>

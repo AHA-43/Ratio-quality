@@ -423,6 +423,9 @@ importers:
       firebase:
         specifier: ^13.4.0
         version: 13.4.0(@types/react@19.3.0)(react@19.1.0)
+      jszip:
+        specifier: ^3.10.2
+        version: 3.10.2
       pptxgenjs:
         specifier: ^4.0.1
         version: 4.0.1

@@ -29,7 +29,7 @@ const login = async (p, email) => { await p.goto(APP + '/'); await p.waitForSele
 const draw = async (p, sel) => { const c = p.locator(sel); await c.scrollIntoViewIfNeeded(); const b = await c.boundingBox(); await p.mouse.move(b.x + 20, b.y + 40); await p.mouse.down(); await p.mouse.move(b.x + 140, b.y + 100, { steps: 6 }); await p.mouse.move(b.x + 220, b.y + 40, { steps: 6 }); await p.mouse.up(); };
 
 const A = await newDevice();
-let inspectionId; let photoLen = 0;
+let inspectionId; let photoLen = 0; let id2;
 await step('wrong password is rejected with a clear message', async () => {
   await A.p.goto(APP + '/'); await A.p.waitForSelector('.login-card');
   await A.p.locator('input[type=email]').fill('inspector@test.local'); await A.p.locator('input[type=password]').fill('wrong');
@@ -92,7 +92,7 @@ await step('inspector cannot approve own report', async () => {
 });
 await step('Excel and PowerPoint exports download', async () => {
   const [x] = await Promise.all([A.p.waitForEvent('download'), A.p.getByRole('button', { name: 'Excel' }).click()]);
-  const [y] = await Promise.all([A.p.waitForEvent('download', { timeout: 60000 }), A.p.getByRole('button', { name: 'PowerPoint' }).click()]);
+  const [y] = await Promise.all([A.p.waitForEvent('download', { timeout: 60000 }), A.p.getByRole('button', { name: 'PowerPoint · عرض مفصّل' }).click()]);
   assert.match(x.suggestedFilename(), /^RQ-\d{4}-00001_HAS\.01_/); assert.match(y.suggestedFilename(), /\.pptx$/);
   await y.saveAs(`${OUT}/cloud-report.pptx`);
 });
@@ -131,12 +131,28 @@ await step('offline: draft keeps working without a connection and syncs after', 
   await A.p.getByTestId('input-branch-search').fill('HAS.03'); await A.p.locator('.branch-option').first().click();
   await A.c.setOffline(true);
   await A.p.getByTestId('button-create-inspection').click(); await A.p.waitForURL(u => /\/inspection\/(?!new)[^/]+$/.test(String(u)));
-  const id2 = A.p.url().split('/').pop();
+  id2 = A.p.url().split('/').pop();
   await A.p.getByTestId('answer-pass-1').click(); await A.p.waitForTimeout(800);
   assert.match(await A.p.locator('.sync-chip').innerText(), /دون اتصال/);
   await A.c.setOffline(false); await A.p.getByTestId('answer-pass-2').click(); await A.p.waitForTimeout(4000);
   const d = await fsGet(`inspections/${id2}`);
   assert.ok(d.fields, 'offline draft reached the cloud after reconnecting');
+});
+await step('same draft edited on two devices: conflict shown, nothing lost', async () => {
+  await B.p.goto(APP + '/'); await B.p.waitForSelector('.today', { timeout: 20000 }); await B.p.waitForTimeout(1500);
+  await B.p.goto(APP + `/inspection/${id2}`); await B.p.waitForTimeout(1500);
+  await B.p.screenshot({ path: `${OUT}/conflict-b.png` }); console.log('B url', B.p.url(), (await B.p.locator('main').innerText()).slice(0, 160).replace(/\n/g, ' | '));
+  await A.p.goto(APP + `/inspection/${id2}`); await A.p.waitForTimeout(1000);
+  await A.p.locator('.heat').nth(2).click(); await A.p.getByTestId('answer-pass-3').click(); await A.p.waitForTimeout(2500);
+  await B.c.setOffline(true);
+  await B.p.locator('.heat').nth(2).click(); await B.p.getByTestId('answer-fail-3').click();
+  await B.p.getByTestId('input-observation-3').fill('ملاحظة من جهاز المدير'); await B.p.waitForTimeout(1200);
+  await B.c.setOffline(false); await B.p.reload(); await B.p.waitForSelector('.today, .runner-page', { timeout: 20000 }); await B.p.waitForTimeout(2500);
+  await B.p.goto(APP + `/inspection/${id2}`); await B.p.waitForSelector('.conflict', { timeout: 15000 });
+  assert.match(await B.p.locator('.conflict').innerText(), /البند 3/);
+  await B.p.locator('.conflict-row button').nth(1).click();
+  await B.p.getByRole('button', { name: 'اعتماد الدمج' }).click(); await B.p.waitForTimeout(800);
+  assert.equal(await B.p.locator('.conflict').count(), 0);
 });
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
 

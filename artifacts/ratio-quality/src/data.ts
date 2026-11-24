@@ -107,11 +107,18 @@ class DexieInspectionRepository implements InspectionRepository {
 
 export const localRepository: InspectionRepository = new DexieInspectionRepository();
 export const list = <T>(store: StoreName) => localRepository.list<T>(store);
+/* ---- sync bookkeeping for conflict detection: last updatedAt known to match the cloud ---- */
+const syncedKey = 'rq-synced';
+const readSynced = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(syncedKey) || '{}'); } catch { return {}; } };
+export function markSynced(id: string, at?: string) { if (!at) return; try { const m = readSynced(); m[id] = at; localStorage.setItem(syncedKey, JSON.stringify(m)); } catch { /* ignore */ } }
+export function getConflict(id: string): Inspection | null { try { return JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); } catch { return null; } }
+export function clearConflict(id: string) { try { localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
 export async function put<T extends { id: string }>(store: StoreName, value: T) {
   await localRepository.put(store, value);
   if (cloudEnabled && isSignedIn() && store !== 'settings') {
     // Cloud mirroring never blocks or breaks local saving (offline-safe). Firestore queues writes itself.
     pushDoc(store, value as never).then(async uploaded => {
+      markSynced(value.id, (value as { updatedAt?: string }).updatedAt);
       if (store === 'inspections' && Object.keys(uploaded).length) {
         const insp = value as unknown as Inspection;
         for (const ans of Object.values(insp.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id];
@@ -144,8 +151,17 @@ export async function syncAll() {
     const cloudIds = new Set(cloud.map(x => x.id));
     for (const c of cloud) {
       const l = localById.get(c.id);
+      const base = readSynced()[c.id];
+      const li = l as unknown as Inspection | undefined, ci = c as unknown as Inspection;
+      if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
+          && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt) {
+        // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
+        try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(ci)); } catch { /* ignore */ }
+        continue;
+      }
       if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
         if (l && store === 'inspections') keepLocalMedia(l as unknown as Inspection, c as unknown as Inspection);
+        markSynced(c.id, c.updatedAt);
         await localRepository.put(store, c as never);
       }
     }
@@ -153,7 +169,9 @@ export async function syncAll() {
       const c = cloud.find(x => x.id === l.id);
       // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
       if (store === 'branches') continue;
-      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) await pushDoc(store, l as never).catch(() => {});
+      if (getConflict(l.id)) continue;
+      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never).then(() => true).catch(() => false); if (ok) markSynced(l.id, l.updatedAt); }
+      else if (c?.updatedAt && c.updatedAt === l.updatedAt) markSynced(l.id, l.updatedAt);
     }
   }
 }
