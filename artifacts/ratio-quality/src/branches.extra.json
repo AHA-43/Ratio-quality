@@ -2,11 +2,12 @@
   {
     "id": "HAS-NAKHEEL",
     "code": null,
-    "nameAr": "الاحساء - قرية النخيل",
+    "nameAr": "ريشيو النخيل",
     "status": "active",
     "ownership": "Ratio%",
     "mapUrl": "https://www.google.com/maps?q=25.460196,49.567115",
     "noteRaw": "أُضيف يدوياً (بدون كود). الموقع: عين منصور، حي محيرس، المبرز.",
-    "flags": []
+    "flags": [],
+    "city": "الأحساء"
   }
 ]

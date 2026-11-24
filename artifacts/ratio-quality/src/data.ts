@@ -204,8 +204,8 @@ export async function syncAll() {
 }
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 export const emptyAnswer = (): Answer => ({ value: null, observation: '', recommendation: '', recurring: false, severity: 'Minor', attachments: [] });
-type MasterBranch = { id: string; code: string | null; nameAr: string; status: string; ownership?: string };
-const BRANCH_MASTER_VERSION = 'master-3';
+type MasterBranch = { id: string; code: string | null; nameAr: string; status: string; ownership?: string; city?: string };
+const BRANCH_MASTER_VERSION = 'master-4';
 export async function initializeBranches() {
   const branches = await list<Branch>('branches');
   let applied = '';
@@ -215,7 +215,7 @@ export async function initializeBranches() {
   const byId = new Map(branches.map(b => [b.id, b]));
   const stamp = new Date().toISOString();
   for (const m of [...masterBranches, ...extraBranches] as MasterBranch[]) {
-    const city = m.nameAr.split(' - ')[0].trim();
+    const city = m.city ?? m.nameAr.split(' - ')[0].trim();
     const prev = byId.get(m.id);
     const archived = m.status !== 'active';
     if (prev && prev.archived === archived && prev.name === m.nameAr.trim()) continue;
