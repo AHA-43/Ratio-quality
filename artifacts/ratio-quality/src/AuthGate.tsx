@@ -5,6 +5,7 @@ import { loadProfile } from './session';
 import { RatioMark } from './features/brand-motion';
 
 /** When Firebase is configured, requires sign-in and runs a sync before the app mounts. Otherwise a no-op. */
+const t0 = Date.now(); // splash holds until the logo has finished drawing
 export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<'loading' | 'out' | 'syncing' | 'in'>(cloudEnabled ? 'loading' : 'in');
   const [email, setEmail] = useState('');
@@ -18,12 +19,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
       if (!user) { setState('out'); return; }
       setState('syncing');
       // Never block the inspector offline: give sync a few seconds, then continue with local data.
-      Promise.race([loadProfile().then(() => syncAll()), new Promise(r => setTimeout(r, 8000))]).catch(() => {}).finally(() => setState('in'));
+      Promise.race([loadProfile().then(() => syncAll()), new Promise(r => setTimeout(r, 8000))]).catch(() => {}).then(() => new Promise(r => setTimeout(r, Math.max(0, 2400 - (Date.now() - t0))))).finally(() => setState('in'));
     });
   }, []);
 
   if (state === 'in') return <>{children}</>;
-  if (state === 'loading' || state === 'syncing') return <div className="splash" dir="rtl"><RatioMark size={88} color="#fff" draw loop/><span>{state === 'syncing' ? 'جاري مزامنة البيانات…' : 'جاري التحميل…'}</span></div>;
+  if (state === 'loading' || state === 'syncing') return <div className="splash" dir="rtl"><RatioMark size={88} color="#fff" className="slow"/><span>{state === 'syncing' ? 'جاري مزامنة البيانات' : 'جاري التحميل'}<b className="splash-dots"/></span><div className="splash-line"><i/></div></div>;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setBusy(true); setError('');
