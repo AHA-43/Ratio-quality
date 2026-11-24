@@ -28,5 +28,44 @@
       "type": "image/png",
       "purpose": "maskable"
     }
+  ],
+  "shortcuts": [
+    {
+      "name": "ابدأ زيارة في أقرب فرع",
+      "short_name": "أقرب فرع",
+      "url": "/inspection/new?quick=1",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "الأولويات وخطة الأسبوع",
+      "short_name": "الأولويات",
+      "url": "/priorities?tab=plan",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "الإجراءات التصحيحية",
+      "short_name": "الإجراءات",
+      "url": "/actions",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "categories": [
+    "business",
+    "productivity"
   ]
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import shape from './saudi-shape.json';
 import type { Branch } from '../data';
 import { branchPos, cityOf, distanceKm, fmtKm, type Pos } from './geo';
-import type { BranchScore } from './BranchMap';
+import type { BranchScore } from './position';
 
 const { viewBox, proj, ksa, neighbours } = shape as { viewBox: string; proj: { minLng: number; maxLat: number; k: number; s: number }; ksa: string; neighbours: string };
 const [VW, VH] = viewBox.split(' ').slice(2).map(Number);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { Toaster } from '@/components/ui/toaster';
@@ -16,13 +16,16 @@ import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
 import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
-import { BranchMap, useMyPosition, type BranchScore } from './features/BranchMap';
+import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
+import { useMyPosition, type BranchScore } from './features/position';
+const BranchMap = lazyRetry(() => import('./features/BranchMap').then(m => ({ default: m.BranchMap })));
 import { SaudiMap } from './features/SaudiMap';
 import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { AskName, CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { explainScore, nameKey } from './features/text';
-import { PrioritiesPage, HomePriorityCard } from './features/priorities';
+const PrioritiesPage = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.PrioritiesPage })));
+const HomePriorityCard = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.HomePriorityCard })));
 import { PhotoAnnotator } from './features/photo-annotator';
 import { InstallCard } from './features/install-guide';
 import { DisplayMenu, initDisplay } from './features/display';
@@ -31,7 +34,16 @@ import { BeforeAfter } from './features/before-after';
 import { SubmitCelebration } from './features/celebration';
 import { QuickPhrases, SectionProgress, useKeyboardOpen, useMedia, useWakeLock } from './features/field-bar';
 import { branchPos, distanceKm, fmtKm } from './features/geo';
-import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
+import { isOverdue } from './features/overdue';
+const BranchesPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BranchesPage })));
+const BranchProfile = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BranchProfile })));
+const ConfigPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.ConfigPage })));
+const ActionsBoard = lazyRetry(() => import('./features/pages').then(m => ({ default: m.ActionsBoard })));
+const AnalyticsPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.AnalyticsPage })));
+const BaristaEvaluation = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BaristaEvaluation })));
+const BaristasPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BaristasPage })));
+const EquipmentPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.EquipmentPage })));
+const UsersPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.UsersPage })));
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
 import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, pendingUploadIds, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
@@ -106,6 +118,16 @@ function AppShell({ children }: { children: ReactNode }) {
   const pendingUploads = usePendingCount();
   useReveal();
   useEffect(() => { if (online && cloudEnabled) syncAll().catch(() => {}); }, [online]);
+  useEffect(() => {
+    requestPersistence();
+    // Warm the lazy screens while online so they also open without a connection inside branches.
+    const idle = (window as unknown as { requestIdleCallback?: (f: () => void) => void }).requestIdleCallback ?? ((f: () => void) => window.setTimeout(f, 3000));
+    idle(() => { if (navigator.onLine) { import('./features/pages').catch(() => {}); import('./features/priorities').catch(() => {}); import('./features/BranchMap').catch(() => {}); } });
+  }, []);
+  // Retry unsent work while waiting (flaky branch Wi-Fi): every 45s, only when something is pending.
+  useEffect(() => { if (!online || !cloudEnabled || !pendingUploads) return; const t = window.setInterval(() => { syncAll().catch(() => {}); }, 45000); return () => window.clearInterval(t); }, [online, pendingUploads > 0]);
+  const storageWarn = useStorageWarning(80);
+  const updateReady = useUpdateAvailable();
   const [location] = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }); }, [location]);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -122,6 +144,8 @@ function AppShell({ children }: { children: ReactNode }) {
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
         <div className="topbar-right"><DisplayMenu/>{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
+      {updateReady && <div className="update-banner" role="status"><span>تم تحديث التطبيق إلى نسخة أحدث.</span><button type="button" onClick={() => window.location.reload()}>تحديث الآن</button></div>}
+      {storageWarn && <div className="storage-banner" role="alert"><b>مساحة جهازك شبه ممتلئة ({storageWarn.pct}%)</b><span>ارفع الزيارات المعلّقة، ثم احذف المسودات القديمة والتجريبية لتفادي فقدان التقدّم.</span></div>}
       {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <AskName/>
       <main className="page-wrap">{children}</main>
@@ -137,7 +161,7 @@ function Button({ children, variant = 'primary', className = '', ...props }: Rea
   return <button {...props} className={`button button-${variant} ${className}`}>{children}</button>;
 }
 function EmptyState({ icon: Icon = ClipboardCheck, title, text, action }: { icon?: typeof ClipboardCheck; title: string; text: string; action?: ReactNode }) {
-  return <div className="empty-state"><span className="empty-icon"><Icon size={24}/></span><h3>{title}</h3><p>{text}</p>{action}</div>;
+  return <div className="empty-state"><span className="empty-icon"><Icon size={24}/></span><h2 className="empty-title">{title}</h2><p>{text}</p>{action}</div>;
 }
 function StatusPill({ children, tone = 'neutral' }: { children: ReactNode; tone?: string }) { return <span className={`status-pill tone-${tone}`}>{children}</span>; }
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) { return <section className={`surface-card ${className}`}>{children}</section>; }
@@ -200,7 +224,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
     <InstallCard/>
     <TrainingDone/>
     <div className="today">
-      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name && !looksAutoNamed(profile) ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link></div>
+      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name && !looksAutoNamed(profile) ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><span className="hello-actions"><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link><Link href="/inspection/new?quick=1" className="button button-soft near-btn" data-testid="button-home-quick"><MapPin size={17}/> أقرب فرع</Link></span></div>
       {latestDraft ? <Link href={`/inspection/${latestDraft.id}`} className="continue-card"><span className="ring" style={{ ['--p' as string]: draftPct }}><b>{draftPct}%</b></span><span><small>{latestDraft.workflow === 'returned' ? 'أُعيدت للتصحيح' : 'زيارة لم تكتمل'}</small><h2>{latestDraft.branchName}</h2><span className="cta">أكمل من حيث توقفت ←</span></span></Link>
         : <Link href="/inspection/new" className="continue-card"><span className="ring" style={{ ['--p' as string]: 0 }}><b>+</b></span><span><small>لا توجد زيارة مفتوحة</small><h2>ابدأ زيارة جودة</h2><span className="cta">اختر الفرع وابدأ الفحص ←</span></span></Link>}
       <div className="attention">
@@ -211,7 +235,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
     </div>
     {data.error && <div className="alert alert-danger">{data.error}<Button variant="outline" onClick={data.refresh}>إعادة المحاولة</Button></div>}
     {data.ready && finished.length < 3 && <TrainingCard data={data}/>}
-    {data.ready && finished.length > 0 && <HomePriorityCard data={data}/>}
+    {data.ready && finished.length > 0 && <Suspense fallback={null}><HomePriorityCard data={data}/></Suspense>}
     <div className="metric-grid">
       <Card className="metric-card"><span className="metric-icon"><ClipboardCheck size={18}/></span><small>زيارات مكتملة</small><strong data-testid="metric-completed">{finished.length}</strong><span className="metric-caption">{cloudEnabled ? 'متزامنة مع حسابك' : 'محفوظة على هذا الجهاز'}</span></Card>
       <Card className="metric-card"><span className="metric-icon green"><Gauge size={18}/></span><small>متوسط الالتزام</small><strong>{average}{average !== '—' && <em>%</em>}</strong><span className="metric-caption">من الزيارات المكتملة</span></Card>
@@ -222,7 +246,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
       <Card className="dashboard-main"><div className="card-heading"><div><span className="eyebrow">تابع من حيث توقفت</span><h2>الزيارات الأخيرة</h2></div><Link href="/visits" className="text-link">كل الزيارات <ArrowLeft size={15}/></Link></div>
         {!data.ready ? <div className="skeleton-list"><i/><i/><i/></div> : data.inspections.length ? <div className="visit-list">{data.inspections.slice(0, 4).map(i => <InspectionRow key={i.id} inspection={i}/>)}</div> : <EmptyState title="ابدأ أول زيارة ميدانية" text="لن تظهر بيانات أو نتائج حتى تسجل زيارة فعلية." action={<Link href="/inspection/new" className="button button-soft"><Plus size={16}/> بدء زيارة</Link>}/>}
       </Card>
-      <Card className="dashboard-side"><div className="card-heading"><div><span className="eyebrow">تحتاج انتباهك</span><h2>الإجراءات المفتوحة</h2></div><Link href="/actions" className="small-arrow"><ChevronLeft size={18}/></Link></div>
+      <Card className="dashboard-side"><div className="card-heading"><div><span className="eyebrow">تحتاج انتباهك</span><h2>الإجراءات المفتوحة</h2></div><Link href="/actions" className="small-arrow" aria-label="عرض الإجراءات المفتوحة"><ChevronLeft size={18}/></Link></div>
         {openActions.length ? <div className="mini-actions">{openActions.slice(0, 4).map(a => <div className="mini-action" key={a.id}><span className={`severity-dot ${a.severity.toLowerCase()}`}/><div><b>{a.title}</b><small>{a.branchName} · الاستحقاق {a.dueDate || 'غير محدد'}</small></div></div>)}</div> : <div className="quiet-empty"><CheckCircle2 size={22}/><span>لا توجد إجراءات مفتوحة حالياً</span></div>}
       </Card>
     </div>
@@ -350,7 +374,7 @@ function BranchPicker({ branches, value, onChange, scores = {} }: { branches: Br
     </div>
     {geo === 'denied' && <small className="form-error">تعذّر الوصول لموقعك. فعّل إذن الموقع للمتصفح ثم حاول مجدداً.</small>}
     <div className="branch-search"><Search size={18}/><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث باسم الفرع أو الكود (مثال: HAS.01)" autoComplete="off" data-testid="input-branch-search"/></div>
-    {q.trim() || view === 'list' ? <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(({ b, km }) => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span><span className="bo-meta">{km != null && <span className="branch-km">{fmtKm(km)}</span>}{b.code && <span className="branch-code">{b.code}</span>}</span></button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div> : view === 'street' ? <BranchMap branches={branches} scores={scores} onSelect={onChange} me={me}/> : <SaudiMap branches={branches} scores={scores} onSelect={onChange} me={me}/>}
+    {q.trim() || view === 'list' ? <div className="branch-list" role="listbox" aria-label="الفروع">{list.length ? list.map(({ b, km }) => <button type="button" role="option" aria-selected={false} key={b.id} className="branch-option" onClick={() => onChange(b.id)}><span>{b.name}{b.demo ? ' · فرع مثال' : ''}</span><span className="bo-meta">{km != null && <span className="branch-km">{fmtKm(km)}</span>}{b.code && <span className="branch-code">{b.code}</span>}</span></button>) : <div className="branch-empty">لا توجد فروع مطابقة</div>}</div> : view === 'street' ? <Suspense fallback={<div className="map-loading">جارٍ تحميل الخريطة…</div>}><BranchMap branches={branches} scores={scores} onSelect={onChange} me={me}/></Suspense> : <SaudiMap branches={branches} scores={scores} onSelect={onChange} me={me}/>}
   </div>;
 }
 
@@ -638,7 +662,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       </div>
       </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</div></div>}
     {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files, answer.value === 'fail'); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
-    {fieldMode && isPhone && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="toolbar" aria-label="أزرار الإجابة السريعة">
+    {fieldMode && isPhone && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="region" aria-label="أزرار الإجابة السريعة">
       <div className="ab-answers">{[['pass','مطابق',Check],['fail','غير مطابق',X],['na','لا ينطبق',CircleHelp]].map(([value,label,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`ab-btn ${value} ${answer.value === value ? 'chosen' : ''}`} data-testid={`answer-${value}-${q.id}`}><Icon size={22}/><b>{label as string}</b></button>)}</div>
       <div className="ab-tools">
         <button type="button" className="ab-prev" disabled={index === 0} onClick={() => { setIndex(Math.max(0, index - 1)); setMessage(''); }} aria-label="السابق"><ArrowRight size={18}/></button>
@@ -736,7 +760,7 @@ function SettingsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
 
 function Router() {
   const data = useLocalData();
-  return <RoutedErrorBoundary><AppShell><Switch>
+  return <RoutedErrorBoundary><AppShell><Suspense fallback={<div className="page-content route-loading" aria-busy="true"><span className="rl-bar"/><div className="skeleton-list"><i/><i/><i/></div></div>}><Switch>
     <Route path="/"><HomePage data={data}/></Route>
     <Route path="/visits"><VisitsPage data={data}/></Route>
     <Route path="/actions"><ActionsBoard data={data}/></Route>
@@ -755,7 +779,7 @@ function Router() {
     <Route path="/inspection/new"><StartInspection data={data}/></Route>
     <Route path="/inspection/:id"><InspectionRunner data={data}/></Route>
     <Route component={NotFound}/>
-  </Switch></AppShell></RoutedErrorBoundary>;
+  </Switch></Suspense></AppShell></RoutedErrorBoundary>;
 }
 function App() {
   return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate><Router/></AuthGate></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;

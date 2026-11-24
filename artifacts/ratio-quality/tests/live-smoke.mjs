@@ -13,6 +13,7 @@ const b = await chromium.launch();
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 } });
 await ctx.addInitScript(() => { try { localStorage.setItem('rq-coach', 'done'); sessionStorage.setItem('rq-name-skip', '1'); } catch {} });
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
+const csp = []; p.on('console', m => { const t = m.text(); if (/Content Security Policy|Report Only|Refused to/i.test(t)) csp.push(t.slice(0, 220)); });
 let id = '';
 await step('site loads with branded login', async () => { await p.goto(APP_URL); await p.waitForSelector('.login-card', { timeout: 30000 }); assert.equal(await p.locator('.login-logo').count(), 1); });
 await step('sign in', async () => { await p.locator('input[type=email]').fill(EMAIL); await p.locator('input[type=password]').fill(PASSWORD); await p.getByRole('button', { name: 'دخول' }).click(); await p.waitForSelector('.today', { timeout: 30000 }); });
@@ -46,8 +47,14 @@ await step('draft and photo reached Firestore', async () => {
   const ph = await (await fetch(`${FS}/${path}`, { headers: H })).json(); assert.match(ph.fields.data.stringValue, /^data:image\/jpeg/);
 });
 await step('main pages open without errors', async () => {
-  for (const r of ['/', '/visits', '/actions', '/reports', '/analytics', '/equipment', '/baristas', '/config']) { await p.goto(APP_URL + r); await p.waitForTimeout(900); }
+  for (const r of ['/', '/visits', '/actions', '/reports', '/analytics', '/equipment', '/baristas', '/config', '/priorities', '/priorities?tab=plan']) { await p.goto(APP_URL + r); await p.waitForTimeout(900); }
   assert.deepEqual(errs, []);
+});
+await step('production headers present and no Content-Security-Policy violations in the browser', async () => {
+  const r = await fetch(APP_URL); const h = r.headers;
+  assert.equal(h.get('x-content-type-options'), 'nosniff'); assert.equal(h.get('x-frame-options'), 'DENY'); assert.match(h.get('permissions-policy') ?? '', /camera=\(self\)/);
+  assert.ok(h.get('content-security-policy') || h.get('content-security-policy-report-only'), 'CSP header missing');
+  assert.deepEqual(csp, [], 'CSP violations: ' + csp.join(' || '));
 });
 await b.close();
 console.log(results.join('\n'));

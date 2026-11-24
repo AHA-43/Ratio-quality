@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import type { Branch } from '../data';
 import { branchPos, distanceKm, fmtKm, type Pos } from './geo';
 
-export type BranchScore = Record<string, { score: number | null; cls: string | null }>;
+import type { BranchScore } from './position';
 const tone = (c: string | null | undefined) => c === 'ممتاز' ? 'good' : c === 'جيد' ? 'ok' : c === 'يحتاج تحسين' ? 'warn' : c === 'غير مقبول' ? 'bad' : 'none';
 const KSA: L.LatLngBoundsExpression = [[16.3, 34.5], [32.2, 55.7]];
 
@@ -47,13 +47,4 @@ export function BranchMap({ branches, scores = {}, selected, onSelect, me, heigh
   return <div className="branch-map" style={{ height }} ref={el} role="application" aria-label="خريطة الفروع"/>;
 }
 
-export function useMyPosition() {
-  const [pos, setPos] = useState<Pos | null>(null);
-  const [state, setState] = useState<'idle' | 'busy' | 'denied'>('idle');
-  const locate = () => {
-    if (!('geolocation' in navigator)) { setState('denied'); return; }
-    setState('busy');
-    navigator.geolocation.getCurrentPosition(p => { setPos({ lat: p.coords.latitude, lng: p.coords.longitude, exact: true }); setState('idle'); }, () => setState('denied'), { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
-  };
-  return { pos, state, locate };
-}
+export { useMyPosition, type BranchScore } from './position';

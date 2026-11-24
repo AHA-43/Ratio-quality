@@ -6,7 +6,7 @@ import { calculateScore } from '../scoring';
 import { nameKey, overdueDays } from './text';
 import { audit, canApprove, isQualityLead, isValidEmail, listAudit, listUsers, ROLE_LABEL, saveConfig, updateUser, useConfig, useProfile, type Profile, type RecipientList, type Role } from '../session';
 import { cloudEnabled } from '../cloud';
-import { type BranchScore } from './BranchMap';
+import { type BranchScore } from './position';
 import { SaudiMap } from './SaudiMap';
 
 export type AppData = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[]; refresh: () => Promise<void> };
@@ -18,7 +18,8 @@ const Title = ({ eyebrow, title, detail }: { eyebrow: string; title: string; det
 
 /* ===================== Corrective actions ===================== */
 const STATUSES: ActionItem['status'][] = ['مفتوح', 'مُسند', 'قيد المعالجة', 'بانتظار التحقق', 'مغلق'];
-export const isOverdue = (a: ActionItem) => a.status !== 'مغلق' && Boolean(a.dueDate) && a.dueDate < today();
+import { isOverdue } from './overdue';
+export { isOverdue };
 
 export function ActionsBoard({ data }: { data: AppData }) {
   const profile = useProfile();

@@ -1,4 +1,5 @@
 import path from 'path';
+import { readFileSync } from 'node:fs';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -63,6 +64,20 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        // Stable vendor chunks: cached across deploys, and the app shell stays small.
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return undefined;
+          if (/node_modules\/(@firebase|firebase)\//.test(id)) return 'vendor-firebase';
+          if (/node_modules\/(leaflet|topojson|world-atlas)/.test(id)) return 'vendor-map';
+          if (/node_modules\/(react|react-dom|scheduler|wouter)\//.test(id)) return 'vendor-react';
+          if (/node_modules\/(@radix-ui|@floating-ui|cmdk|vaul)/.test(id)) return 'vendor-ui';
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,
@@ -74,6 +89,8 @@ export default defineConfig({
     },
   },
   preview: {
+    // CSP_TEST=1 serves the production Content-Security-Policy (enforced) so a local run surfaces violations before deploy.
+    headers: process.env.CSP_TEST ? { 'Content-Security-Policy': readFileSync(path.resolve(import.meta.dirname, 'csp.txt'), 'utf8') + ' http://localhost:* ws://localhost:*' } : undefined,
     port,
     host: '0.0.0.0',
     allowedHosts: true,

@@ -23,6 +23,7 @@ beforeEach(async () => {
     await setDoc(doc(db, 'actions/a1'), { status: 'بانتظار التحقق' });
     await setDoc(doc(db, 'baristaEvals/e1'), { evaluatorUid: 'insp', answers: {} });
     await setDoc(doc(db, 'counters/inspections'), { year: 2026, seq: 5 });
+    await setDoc(doc(db, 'inspections/mine'), { status: 'draft', inspectorUid: 'insp' });
   });
 });
 const as = uid => env.authenticatedContext(uid).firestore();
@@ -100,4 +101,21 @@ test('mail log is append-only and tagged with the sender', async () => {
 test('amendment of an approved report is a new draft; the original stays locked', async () => {
   await assertSucceeds(setDoc(doc(as('qm'), 'inspections/app1-r1'), { status: 'draft', amendmentOf: 'app1', revision: 1 }));
   await assertFails(updateDoc(doc(as('qm'), 'inspections/app1'), { amended: true }));
+});
+
+test('a draft belongs to its inspector: other inspectors cannot edit or delete it, leads can', async () => {
+  await assertSucceeds(updateDoc(doc(as('insp'), 'inspections/mine'), { note: 'mine' }));
+  await assertFails(updateDoc(doc(as('insp2'), 'inspections/mine'), { note: 'hijack' }));
+  await assertFails(deleteDoc(doc(as('insp2'), 'inspections/mine')));
+  await assertSucceeds(updateDoc(doc(as('qm'), 'inspections/mine'), { note: 'lead' }));
+  await assertSucceeds(deleteDoc(doc(as('insp'), 'inspections/mine')));
+});
+test('practice (training) visits are rejected by the cloud', async () => {
+  await assertFails(setDoc(doc(as('insp'), 'inspections/t1'), { status: 'draft', training: true }));
+  await assertFails(updateDoc(doc(as('insp'), 'inspections/draft1'), { training: true }));
+});
+test('inspection counter cannot be reset inside a year, only roll over to a new year', async () => {
+  await assertFails(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2026, seq: 1 }));
+  await assertSucceeds(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2027, seq: 1 }));
+  await assertFails(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2026, seq: 2 }));
 });

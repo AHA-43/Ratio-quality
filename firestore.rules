@@ -8,6 +8,10 @@ service cloud.firestore {
     function isAdmin() { return hasProfile() && me().role == 'admin'; }
     function isLead() { return hasProfile() && me().role in ['admin', 'quality_manager']; }
     function canApprove() { return isLead() || (hasProfile() && me().get('canApprove', false) == true); }
+    // A draft belongs to the inspector who started it (legacy drafts without an owner stay open); leads and approvers can always step in.
+    function ownsDraft() { return resource.data.get('inspectorUid', request.auth.uid) == request.auth.uid || isLead() || canApprove(); }
+    // Practice visits never reach the cloud.
+    function notTraining() { return request.resource.data.get('training', false) != true; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
 
     // Profiles: a user may create their own as a plain inspector; only admins change roles.
@@ -30,13 +34,13 @@ service cloud.firestore {
     // approved ones are locked for everyone.
     match /inspections/{id} {
       allow read: if active();
-      allow create: if active() && request.resource.data.get('workflow', '') != 'approved';
+      allow create: if active() && request.resource.data.get('workflow', '') != 'approved' && notTraining();
       allow update: if active() && resource.data.get('workflow', '') != 'approved' && (
-           (resource.data.status == 'draft' && request.resource.data.get('workflow', '') != 'approved')
+           (resource.data.status == 'draft' && request.resource.data.get('workflow', '') != 'approved' && ownsDraft() && notTraining())
         || (resource.data.status == 'finalized' && canApprove())
         || (resource.data.status == 'finalized' && changed().hasOnly(['number', 'updatedAt']))
       );
-      allow delete: if isAdmin() || (active() && resource.data.status == 'draft');
+      allow delete: if isAdmin() || (active() && resource.data.status == 'draft' && ownsDraft());
     }
 
     // Corrective actions: closing (verification) and reopening are reserved to quality leads.
@@ -98,7 +102,9 @@ service cloud.firestore {
     match /counters/{id} {
       allow read: if active();
       allow create: if active() && request.resource.data.seq == 1;
-      allow update: if active() && (request.resource.data.seq == resource.data.seq + 1 || request.resource.data.seq == 1);
+      // +1 within the same year; back to 1 only when the year moves forward.
+      allow update: if active() && ((request.resource.data.seq == resource.data.seq + 1 && request.resource.data.year == resource.data.year)
+        || (request.resource.data.seq == 1 && request.resource.data.year > resource.data.year));
     }
   }
 }
