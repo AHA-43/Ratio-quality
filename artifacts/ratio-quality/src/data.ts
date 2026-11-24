@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
-import { cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
+import { ConflictError, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
@@ -112,19 +112,22 @@ const syncedKey = 'rq-synced';
 const readSynced = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(syncedKey) || '{}'); } catch { return {}; } };
 export function markSynced(id: string, at?: string) { if (!at) return; try { const m = readSynced(); m[id] = at; localStorage.setItem(syncedKey, JSON.stringify(m)); } catch { /* ignore */ } }
 export function getConflict(id: string): Inspection | null { try { return JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); } catch { return null; } }
-export function clearConflict(id: string) { try { localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
+const conflictListeners = new Set<(id: string) => void>();
+export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };
+export function saveConflict(c: Inspection) { try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(c)); } catch { /* ignore */ } conflictListeners.forEach(f => f(c.id)); }
+export function clearConflict(id: string) { try { const c = JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); if (c?.updatedAt) markSynced(id, c.updatedAt); localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
 export async function put<T extends { id: string }>(store: StoreName, value: T) {
   await localRepository.put(store, value);
   if (cloudEnabled && isSignedIn() && store !== 'settings') {
     // Cloud mirroring never blocks or breaks local saving (offline-safe). Firestore queues writes itself.
-    pushDoc(store, value as never).then(async uploaded => {
+    pushDoc(store, value as never, readSynced()[value.id]).then(async uploaded => {
       markSynced(value.id, (value as { updatedAt?: string }).updatedAt);
       if (store === 'inspections' && Object.keys(uploaded).length) {
         const insp = value as unknown as Inspection;
         for (const ans of Object.values(insp.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id];
         await localRepository.put(store, insp as never);
       }
-    }).catch(() => {});
+    }).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); });
   }
 }
 export async function remove(store: StoreName, id: string) {
@@ -156,7 +159,7 @@ export async function syncAll() {
       if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
           && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt) {
         // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
-        try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(ci)); } catch { /* ignore */ }
+        saveConflict(ci);
         continue;
       }
       if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
@@ -170,7 +173,7 @@ export async function syncAll() {
       // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
       if (store === 'branches') continue;
       if (getConflict(l.id)) continue;
-      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never).then(() => true).catch(() => false); if (ok) markSynced(l.id, l.updatedAt); }
+      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
       else if (c?.updatedAt && c.updatedAt === l.updatedAt) markSynced(l.id, l.updatedAt);
     }
   }

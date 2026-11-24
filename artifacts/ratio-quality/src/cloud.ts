@@ -2,7 +2,7 @@
 // (VITE_FIREBASE_* env vars) users must sign in and data is mirrored to Firestore + Storage.
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, type User } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
 const env: Record<string, string | undefined> = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
@@ -62,10 +62,22 @@ async function resolvePhoto(path: string): Promise<string> {
   return getDownloadURL(ref(storage!, path)).catch(() => '');
 }
 
-export async function pushDoc(store: string, value: AnyDoc) {
+export class ConflictError extends Error { constructor(public cloud: AnyDoc) { super('conflict'); } }
+/** Drafts are written with a precondition: only if the cloud copy is still the one this device last saw
+ *  (expectedUpdatedAt). Transactions need a connection, so offline edits are never blind-written later. */
+export async function pushDoc(store: string, value: AnyDoc, expectedUpdatedAt?: string) {
   if (!fs || !isSignedIn()) return {};
   const { cloudCopy, uploaded } = await prepare(store, value);
-  await setDoc(doc(fs, store, value.id), JSON.parse(JSON.stringify(cloudCopy)));
+  const ref_ = doc(fs, store, value.id);
+  const data = JSON.parse(JSON.stringify(cloudCopy));
+  if (store === 'inspections' && value.status === 'draft') {
+    await runTransaction(fs, async tx => {
+      const snap = await tx.get(ref_);
+      const cur = snap.exists() ? snap.data() as AnyDoc : null;
+      if (cur && expectedUpdatedAt && cur.updatedAt && cur.updatedAt > expectedUpdatedAt && cur.updatedAt !== value.updatedAt) throw new ConflictError({ ...cur, id: value.id });
+      tx.set(ref_, data);
+    });
+  } else await setDoc(ref_, data);
   return uploaded;
 }
 export async function removeDoc(store: string, id: string) {

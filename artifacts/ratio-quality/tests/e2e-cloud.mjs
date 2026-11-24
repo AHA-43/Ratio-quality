@@ -141,7 +141,6 @@ await step('offline: draft keeps working without a connection and syncs after', 
 await step('same draft edited on two devices: conflict shown, nothing lost', async () => {
   await B.p.goto(APP + '/'); await B.p.waitForSelector('.today', { timeout: 20000 }); await B.p.waitForTimeout(1500);
   await B.p.goto(APP + `/inspection/${id2}`); await B.p.waitForTimeout(1500);
-  await B.p.screenshot({ path: `${OUT}/conflict-b.png` }); console.log('B url', B.p.url(), (await B.p.locator('main').innerText()).slice(0, 160).replace(/\n/g, ' | '));
   await A.p.goto(APP + `/inspection/${id2}`); await A.p.waitForTimeout(1000);
   await A.p.locator('.heat').nth(2).click(); await A.p.getByTestId('answer-pass-3').click(); await A.p.waitForTimeout(2500);
   await B.c.setOffline(true);

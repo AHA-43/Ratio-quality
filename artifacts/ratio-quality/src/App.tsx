@@ -20,7 +20,7 @@ import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSetting
 import { CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
 import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -77,6 +77,7 @@ function useOnline() {
 function AppShell({ children }: { children: ReactNode }) {
   const online = useOnline();
   useReveal();
+  useEffect(() => { if (online && cloudEnabled) syncAll().catch(() => {}); }, [online]);
   const [location] = useLocation();
   useEffect(() => { window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior }); }, [location]);
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -339,6 +340,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const answer = defaultAnswer(q ? answers[q.id] : undefined);
   const score = useMemo(() => calculateScore(questions, answers), [questions, answers]);
   useEffect(() => { if (inspection) setAnswers(inspection.answers); }, [inspection?.id]);
+  useEffect(() => onConflict(cid => { if (cid === id) setConflict(getConflict(id)); }), [id]);
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(t); }, [toast]);
   useEffect(() => { if (inspection?.status === 'finalized') setLocation(`/reports/${inspection.id}`); }, [inspection?.id, inspection?.status, setLocation]);
   useEffect(() => {
