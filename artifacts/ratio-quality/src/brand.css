@@ -410,8 +410,13 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
 /* navigation: brand icons with an active "%" dot */
 .r-icon { display: block; }
 .bottom-nav a { position: relative; transition: color .2s; }
-.bottom-nav a.selected::before { content: ""; position: absolute; top: 4px; width: 26px; height: 4px; border-radius: 4px; background: var(--corn); animation: grow .35s var(--ease-spring); }
-.bottom-nav a.selected .r-icon { animation: nav-bounce .45s var(--ease-spring); }
+.bottom-nav a { padding: 4px 4px 2px; gap: 4px; font-size: 10px; }
+.bottom-nav .nav-ico { position: relative; width: 58px; height: 32px; display: grid; place-items: center; }
+.bottom-nav .nav-ico::before { content: ""; position: absolute; inset: 0; border-radius: 16px; background: var(--corn-soft); opacity: 0; transform: scale(.6); transition: opacity .25s, transform .35s var(--ease-spring); }
+.bottom-nav a.selected .nav-ico::before { opacity: 1; transform: none; }
+.bottom-nav .nav-ico .r-icon { position: relative; }
+.bottom-nav a.selected .r-icon { animation: nav-pop .45s var(--ease-spring); stroke-width: 2.2; }
+@keyframes nav-pop { 0% { transform: scale(.75); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 @keyframes grow { from { transform: scaleX(0); } }
 @keyframes nav-bounce { 40% { transform: translateY(-3px) scale(1.12); } }
 .rail-link .r-icon { transition: transform .25s var(--ease-spring); } .rail-link:hover .r-icon { transform: rotate(-8deg) scale(1.08); }
@@ -523,3 +528,12 @@ body { background: var(--milk-soft); color: var(--navy); -webkit-tap-highlight-c
 @media (prefers-reduced-motion: reduce) { .saudi-map .ksa, .saudi-map .city, .saudi-map .city.on .halo, .saudi-map .me-halo { animation: none; } }
 .saudi-map { position: relative; }
 .sm-reset { justify-self: center; border: 1px solid #d5dafc; background: #fff; color: var(--navy-2); border-radius: 18px; min-height: 36px; padding: 0 14px; font-weight: 700; font-size: 12px; animation: fade-up .3s var(--ease-out); }
+
+/* date inputs: iOS gives them an intrinsic width that overflows their column */
+.field input[type="date"], .field input[type="datetime-local"] { display: block; width: 100%; min-width: 0; max-width: 100%; -webkit-appearance: none; appearance: none; box-sizing: border-box; min-height: 48px; padding-inline: 12px; text-align: start; }
+.field input[type="date"]::-webkit-date-and-time-value, .field input[type="datetime-local"]::-webkit-date-and-time-value { text-align: start; min-height: 1.4em; }
+
+/* active icons: the logo's rings fill in (like the % dots) */
+.r-icon .ring { transition: fill-opacity .3s var(--ease-out); fill: currentColor; fill-opacity: 0; }
+.bottom-nav a.selected .r-icon .ring, .rail-link.active .r-icon .ring { fill-opacity: .28; }
+.bottom-nav a.selected .r-icon { stroke-width: 2.2; }

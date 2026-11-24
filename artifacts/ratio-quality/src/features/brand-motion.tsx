@@ -14,16 +14,22 @@ export function RatioMark({ size = 64, color = 'currentColor', draw = false, loo
   </svg>;
 }
 
-/* ---------- brand icon set: 24px, 2px strokes, rings + 45° slashes like the mark ---------- */
+/* ---------- brand icon set: drawn in the Ratio logo's own grammar ----------
+   rings (the two "%" circles) · 45° slash · square corners with butt (cut) ends · one thick stroke weight. */
 type IP = { size?: number; className?: string };
 const I = (children: React.ReactNode) => ({ size = 20, className = '' }: IP) =>
-  <svg className={`r-icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>{children}</svg>;
-export const RIconHome = I(<><path d="M3 6h6M4 6v4.5a8 8 0 0 0 14 5.3"/><circle cx="12.5" cy="6.5" r="3"/><circle cx="18" cy="12.5" r="3"/><path d="M11 15.5 20.5 6"/></>);
-export const RIconVisits = I(<><rect x="5" y="4" width="14" height="17" rx="3"/><path d="M9 4V3h6v1"/><circle cx="10" cy="11" r="1.6"/><circle cx="14.2" cy="16" r="1.6"/><path d="M9 17.5 15.5 9.5"/></>);
-export const RIconActions = I(<><circle cx="12" cy="12" r="8.5"/><path d="m8.2 12.2 2.6 2.6 5-5.2"/><path d="M17.8 4.6 19.6 2.8"/></>);
-export const RIconReports = I(<><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/><path d="M9 17v-3M12 17v-5M15 17v-7"/></>);
-export const RIconSettings = I(<><circle cx="7.5" cy="7.5" r="3.5"/><circle cx="16.5" cy="16.5" r="3.5"/><path d="M5 19 19 5"/></>);
-export const RIconAnalytics = I(<><path d="M4 20h16"/><path d="M6 16v-3M10 16V9M14 16v-5M18 16V6"/><circle cx="18" cy="4" r="1.2"/></>);
+  <svg className={`r-icon ${className}`} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="butt" strokeLinejoin="miter" aria-hidden>{children}</svg>;
+/* home = the logo mark itself (cup + two rings + slash) */
+export const RIconHome = I(<><path d="M1 6h5.5M2 6v6.7A8.2 8.2 0 0 0 16.6 18"/><circle className="ring" cx="9.8" cy="6.3" r="3.3"/><path d="M9.9 16.3 21.6 4.6"/><circle className="ring" cx="17.8" cy="14.6" r="3.3"/></>);
+/* visits = a place pin whose centre is a ring */
+export const RIconVisits = I(<><path d="M12 21.5S5 15.2 5 9.8a7 7 0 0 1 14 0c0 5.4-7 11.7-7 11.7z"/><circle className="ring" cx="12" cy="9.8" r="2.6"/></>);
+/* actions = a ring closed with a 45° tick (the slash) */
+export const RIconActions = I(<><circle className="ring" cx="12" cy="12" r="8.6"/><path d="m7.6 12.2 3.1 3.1 5.9-6.3"/></>);
+/* reports = a document carrying the "%" (two rings + slash) */
+export const RIconReports = I(<><path d="M5 2.8h10.4L20 7.4V21.2H5z"/><path d="M15.4 2.8v4.6H20"/><circle className="ring" cx="9.4" cy="11.4" r="1.6"/><circle className="ring" cx="15.6" cy="17" r="1.6"/><path d="m8.6 18.2 7.2-7.4"/></>);
+/* settings = two sliders whose knobs are the logo's rings */
+export const RIconSettings = I(<><path d="M3 7.5h8M17.6 7.5H21M3 16.5h3M12 16.5h9"/><circle className="ring" cx="14.3" cy="7.5" r="2.6"/><circle className="ring" cx="9" cy="16.5" r="2.6"/></>);
+export const RIconAnalytics = I(<><path d="M3.5 20.5h17"/><path d="M6.5 17v-4M12 17V9M17.5 17V7"/><circle className="ring" cx="17.5" cy="4" r="1.7"/></>);
 
 /* ---------- count-up number ---------- */
 export function CountUp({ to, decimals = 1, duration = 1100, suffix = '' }: { to: number | null; decimals?: number; duration?: number; suffix?: string }) {
