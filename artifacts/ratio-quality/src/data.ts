@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
+import extraBranches from './branches.extra.json'; // branches added by hand (survive a re-import of the workbook)
 import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
@@ -204,7 +205,7 @@ export async function syncAll() {
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 export const emptyAnswer = (): Answer => ({ value: null, observation: '', recommendation: '', recurring: false, severity: 'Minor', attachments: [] });
 type MasterBranch = { id: string; code: string | null; nameAr: string; status: string; ownership?: string };
-const BRANCH_MASTER_VERSION = 'master-2';
+const BRANCH_MASTER_VERSION = 'master-3';
 export async function initializeBranches() {
   const branches = await list<Branch>('branches');
   let applied = '';
@@ -213,7 +214,7 @@ export async function initializeBranches() {
   // Approved branch master (see docs/branch-import-report.md): upsert by id, keep user edits like manager names.
   const byId = new Map(branches.map(b => [b.id, b]));
   const stamp = new Date().toISOString();
-  for (const m of masterBranches as MasterBranch[]) {
+  for (const m of [...masterBranches, ...extraBranches] as MasterBranch[]) {
     const city = m.nameAr.split(' - ')[0].trim();
     const prev = byId.get(m.id);
     const archived = m.status !== 'active';

@@ -43,3 +43,6 @@ Nothing was corrected silently. Rows below need an owner decision before product
 - `الاحساء - الكلية التقنية` (no code, has opening date) → active, identified internally by its Excel row.
 - `مصر` (no code, no opening date, outside KSA) → hidden pending review.
 - Duplicate codes (`RIY.13`, `QTF.02`) remain separate branches with internal IDs `ROW{n}`.
+
+## Manual additions (`src/branches.extra.json`)
+- **الاحساء - قرية النخيل** — no branch code; id `HAS-NAKHEEL`; exact coordinates 25.460196, 49.567115 (عين منصور، حي محيرس، المبرز). Kept outside the workbook import so re-running the import does not remove it.
