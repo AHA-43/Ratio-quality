@@ -111,6 +111,8 @@ export const list = <T>(store: StoreName) => localRepository.list<T>(store);
 const syncedKey = 'rq-synced';
 const readSynced = (): Record<string, string> => { try { return JSON.parse(localStorage.getItem(syncedKey) || '{}'); } catch { return {}; } };
 export function markSynced(id: string, at?: string) { if (!at) return; try { const m = readSynced(); m[id] = at; localStorage.setItem(syncedKey, JSON.stringify(m)); } catch { /* ignore */ } }
+/** Records whose latest local version has not been confirmed as matching the cloud (not uploaded yet). */
+export function pendingUploadIds(list: { id: string; updatedAt: string }[]): string[] { const m = readSynced(); return list.filter(i => m[i.id] !== i.updatedAt).map(i => i.id); }
 export function getConflict(id: string): Inspection | null { try { return JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); } catch { return null; } }
 const conflictListeners = new Set<(id: string) => void>();
 export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };

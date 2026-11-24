@@ -9,7 +9,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Form } from '@/components/ui/form';
-import { Activity, Archive, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
@@ -17,13 +18,14 @@ import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistV
 import { ExportBar, MailHistory } from './features/ExportBar';
 import { BranchMap, useMyPosition, type BranchScore } from './features/BranchMap';
 import { SaudiMap } from './features/SaudiMap';
-import { branchPos, distanceKm, fmtKm } from './features/geo';
 import { ConflictResolver } from './features/ConflictResolver';
 import { Celebrate, CountUp, RIconActions, RIconHome, RIconReports, RIconSettings, RIconVisits, ScoreRing, useReveal } from './features/brand-motion';
 import { AskName, CoachMarks, DictateButton, useShortcuts, WritingHelper } from './features/field-tools';
+import { QuickPhrases, SectionProgress, useKeyboardOpen, useMedia, useWakeLock } from './features/field-bar';
+import { branchPos, distanceKm, fmtKm } from './features/geo';
 import { BranchesPage, BranchProfile, ConfigPage, isOverdue, ActionsBoard, AnalyticsPage, BaristaEvaluation, BaristasPage, EquipmentPage, UsersPage } from './features/pages';
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, pendingUploadIds, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -77,8 +79,21 @@ function useOnline() {
   return online;
 }
 
+function usePendingCount() {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (!cloudEnabled) return;
+    let on = true;
+    const run = () => list<Inspection>('inspections').then(l => { if (on) setN(pendingUploadIds(l).length); }).catch(() => {});
+    run(); const t = window.setInterval(run, 4000);
+    return () => { on = false; window.clearInterval(t); };
+  }, []);
+  return n;
+}
+
 function AppShell({ children }: { children: ReactNode }) {
   const online = useOnline();
+  const pendingUploads = usePendingCount();
   useReveal();
   useEffect(() => { if (online && cloudEnabled) syncAll().catch(() => {}); }, [online]);
   const [location] = useLocation();
@@ -95,7 +110,7 @@ function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <button className="icon-button menu-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="فتح القائمة" data-testid="button-menu"><MoreHorizontal size={22}/></button>
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
-        <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? 'متصل · تتم المزامنة' : 'دون اتصال · الحفظ على الجهاز'}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
+        <div className="topbar-right">{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {mobileMenu && <div className="mobile-menu">{[...nav, ...moreNav].map(n => <Link key={n.href} href={n.href} onClick={() => setMobileMenu(false)} data-testid={`mobile-nav-${n.href}`}>{n.label}</Link>)}</div>}
       <AskName/>
@@ -314,9 +329,10 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   useEffect(() => { setQuestions(applyStandards(QUESTIONS, sharedCfg)); }, [sharedCfg]);
   const activeBranches = data.branches.filter(b => !b.archived);
   const branchScores = useMemo<BranchScore>(() => { const out: BranchScore = {}; for (const i of [...data.inspections].filter(x => x.status === 'finalized').sort((x, y) => x.date.localeCompare(y.date))) { const r = calculateScore(i.questionSnapshot, i.answers); out[i.branchId] = { score: r.score, cls: r.classification }; } return out; }, [data.inspections]);
-  const start = async (values: InspectionStartValues) => {
+  const start = async (values: InspectionStartValues, forcedBranchId?: string) => {
     setError('');
-    const branch = activeBranches.find(b => b.id === branchId)!;
+    const bid = forcedBranchId ?? values.branchId;
+    const branch = activeBranches.find(b => b.id === bid)!;
     let selectedQuestions = questions;
     if (type === 'فحص جودة القهوة') {
       selectedQuestions = questions.filter(q => q.section === 'جودة القهوة' || q.section === 'تجربة المشروبات والتذوق');
@@ -324,7 +340,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
       selectedQuestions = questions.filter(q => q.section === 'المعدات والجاهزية');
     } else if (type === 'زيارة متابعة') {
       const followUpIds = new Set(data.inspections
-        .filter(i => i.branchId === branchId && i.status === 'finalized')
+        .filter(i => i.branchId === bid && i.status === 'finalized')
         .flatMap(i => Object.entries(i.answers)
           .filter(([, a]) => a.value === 'fail' || a.initialValue === 'fail')
           .map(([questionId]) => Number(questionId))));
@@ -335,15 +351,37 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
       }
     }
     const id = newId();
-    const insp: Inspection = { id, status: 'draft', branchId: values.branchId, branchName: branch.name, branchCode: branch.code, inspectorUid: profile?.uid, inspectorEmail: profile?.email, startedAt: stamp(), checklistVersion: checklistVersionLabel(sharedCfg), inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
+    const insp: Inspection = { id, status: 'draft', branchId: bid, branchName: branch.name, branchCode: branch.code, inspectorUid: profile?.uid, inspectorEmail: profile?.email, startedAt: stamp(), checklistVersion: checklistVersionLabel(sharedCfg), inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
     await put('inspections', insp); await data.refresh(); setLocation(`/inspection/${id}`);
   };
+  const [locating, setLocating] = useState(false);
+  const [nearNote, setNearNote] = useState('');
+  const quickStart = () => {
+    setError(''); setNearNote('');
+    if (!navigator.geolocation) { setError('الجهاز لا يدعم تحديد الموقع. اختر الفرع من الخريطة.'); return; }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(pos => {
+      setLocating(false);
+      const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      const ranked = activeBranches.map(b => { const p = branchPos(b.id, b.name); return p ? { b, km: distanceKm(me, p), exact: p.exact } : null; }).filter(Boolean).sort((x, y) => x!.km - y!.km) as { b: Branch; km: number; exact: boolean }[];
+      const best = ranked[0];
+      if (!best) { setError('تعذر تحديد أقرب فرع. اختره من الخريطة.'); return; }
+      const name = form.getValues('inspector').trim() || profile?.name?.trim() || '';
+      form.setValue('branchId', best.b.id, { shouldValidate: true }); form.setValue('date', localDateTime());
+      if (name) form.setValue('inspector', name);
+      // Start straight away only when we are clearly standing at the branch and know who is inspecting.
+      if (name && best.km <= 0.5 && best.exact) { start({ ...form.getValues(), inspector: name, branchId: best.b.id, date: localDateTime() }, best.b.id); return; }
+      setNearNote(`أقرب فرع: ${best.b.name} (${fmtKm(best.km)})${best.km > 0.5 ? ' — لست قريباً بما يكفي للبدء تلقائياً، تأكد من الفرع ثم اضغط «حفظ وبدء الفحص».' : ' — أدخل اسم المفتش ثم ابدأ.'}`);
+    }, () => { setLocating(false); setError('لم نتمكن من معرفة موقعك. اسمح للمتصفح بالوصول للموقع أو اختر الفرع من الخريطة.'); }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 });
+  };
+  useEffect(() => { if (new URLSearchParams(window.location.search).get('quick') === '1') quickStart(); /* eslint-disable-next-line */ }, []);
   return <div className="page-content narrow-page"><Link href="/" className="back-link"><ArrowRight size={16}/> الرئيسية</Link><PageTitle eyebrow="زيارة جديدة" title="بيانات الجولة" detail="اختر الفرع وتأكد من بيانات الزيارة، ثم ابدأ الفحص. تُحفظ كل إجابة تلقائياً."/>
-    <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(start)}><div className="form-grid">
+    <button type="button" className="quick-start" onClick={quickStart} disabled={locating} data-testid="button-quick-start"><span className="qs-ico"><MapPin size={22}/></span><span><b>{locating ? 'جارٍ تحديد موقعك…' : 'ابدأ زيارة في أقرب فرع'}</b><small>ضغطة واحدة: الفرع والتاريخ واسمك تُعبّأ تلقائياً</small></span></button>{nearNote && <div className="alert alert-info quick-note"><Info size={16}/>{nearNote}</div>}
+    <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(v => start(v))}><div className="form-grid">
       <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} scores={branchScores} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
-      <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" {...form.register('date')} data-testid="input-inspection-date"/></label>
+      <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" dir="ltr" className="ltr-date" {...form.register('date')} data-testid="input-inspection-date"/></label>
       <label className="field"><span>الفترة</span><select {...form.register('shift')} data-testid="select-shift"><option>صباحية</option><option>مسائية</option></select></label>
       <label className="field"><span>عدد الموظفين</span><input type="number" min="0" {...form.register('employees', { valueAsNumber: true })} data-testid="input-employees"/>{form.formState.errors.employees && <small className="form-error">{form.formState.errors.employees.message}</small>}</label>
     </div>{error && <div className="form-error">{error}</div>}<div className="form-note"><Info size={17}/><span>{cloudEnabled ? 'تُحفظ المسودة تلقائياً على جهازك وتُزامن مع حسابك عند توفر الإنترنت.' : 'البيانات لا تغادر هذا الجهاز. لا يوجد نسخ احتياطي سحابي أو مزامنة بين الأجهزة.'}</span></div><Button type="submit" className="full-button" data-testid="button-create-inspection">حفظ وبدء الفحص <ArrowLeft size={17}/></Button></form></Form>
@@ -388,6 +426,17 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     }, 450);
     return () => window.clearTimeout(timer);
   }, [answers, signatures, inspection?.id]);
+  const [, tick] = useState(0);
+  useEffect(() => { const t = window.setInterval(() => tick(n => n + 1), 3000); return () => window.clearInterval(t); }, []);
+  const isPhone = useMedia('(max-width: 767px)');
+  const kbOpen = useKeyboardOpen();
+  const fieldMode = Boolean(inspection) && inspection?.status === 'draft' && !review;
+  useWakeLock(fieldMode);
+  useEffect(() => { document.body.classList.toggle('runner-focus', fieldMode && isPhone); return () => document.body.classList.remove('runner-focus'); }, [fieldMode, isPhone]);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const [camAuto, setCamAuto] = useState(() => { try { return localStorage.getItem('rq-cam') !== 'off'; } catch { return true; } });
+  const [noteOpen, setNoteOpen] = useState(false);
+  useEffect(() => { setNoteOpen(false); }, [index]);
   // Hooks must run on every render (also while the draft is still loading on another device).
   useShortcuts({
     '1': () => choose('pass'), '2': () => choose('fail'), '3': () => choose('na'),
@@ -411,6 +460,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const choose = (value: 'pass' | 'fail' | 'na') => {
     update({ value, severity: q.severity }); setMessage('');
     try { navigator.vibrate?.(value === 'fail' ? [18, 40, 18] : 12); } catch { /* unsupported */ }
+    if (value === 'fail' && camAuto && inspection.status === 'draft' && !answers[q.id]?.attachments?.length) cameraRef.current?.click();
     if (value !== 'fail' && autoAdvance && inspection.status === 'draft') {
       const from = index;
       window.setTimeout(() => {
@@ -422,6 +472,11 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         setToast({ text: sectionDone ? `✓ اكتمل قسم «${q.section}»${secFails ? ` · ${secFails} ملاحظة` : ' · بدون ملاحظات'}` : `${value === 'pass' ? '✓ مطابق' : '— لا ينطبق'} · البند ${q.id}`, back: from });
       }, 320);
     }
+  };
+  const jumpIncomplete = () => {
+    const n = questions.length;
+    for (let k = 1; k <= n; k++) { const i = (index + k) % n; if (answers[questions[i].id]?.value == null) { setIndex(i); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); return; } }
+    setReview(true);
   };
   const onTouchStart = (e: React.TouchEvent) => { const t = e.target as HTMLElement; if (t.closest('textarea,input,canvas,select,.heat-strip')) { touch.current = null; return; } touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; };
   const onTouchEnd = (e: React.TouchEvent) => {
@@ -491,7 +546,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     {inspection.status === 'draft' && conflict && <ConflictResolver mine={answers} theirs={conflict} onResolve={merged => { setConflict(null); setAnswers(merged); }}/>}
     {inspection.amendmentOf && inspection.status === 'draft' && <div className="alert amend-banner">نسخة تصحيحية رقم {inspection.revision} للتقرير المعتمد — السبب: {inspection.amendmentReason}. التقرير الأصلي محفوظ كما هو.</div>}
     {inspection.workflow === 'returned' && <div className="alert alert-danger">أُعيدت هذه الزيارة للتصحيح{inspection.returnedBy ? ` من ${inspection.returnedBy.name}` : ''}: {inspection.returnReason}</div>}
-    <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? 'محفوظ تلقائياً' : 'جارٍ الحفظ…'}</div></div>
+    <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? (cloudEnabled && inspection && pendingUploadIds([inspection]).length ? '✓ محفوظ على الجهاز · بانتظار الرفع' : cloudEnabled ? '✓ محفوظ ومرفوع' : '✓ محفوظ على الجهاز') : 'جارٍ الحفظ…'}</div></div>
     <div className="runner-intro"><div><div className="eyebrow">{inspection.branchName} · {inspection.shift}</div><h1>{inspection.type}</h1><p>{inspection.inspector} <span>·</span> {inspection.date}</p></div><span className="question-counter">{answeredCount}<small> / {questions.length} مكتمل</small></span></div>
     <div className="progress-track"><span style={{ width: `${(answeredCount / questions.length) * 100}%` }}/></div>
     {message && <div className="alert alert-info"><Info size={16}/>{message}<button onClick={() => setMessage('')} aria-label="إغلاق"><X size={16}/></button></div>}
@@ -502,7 +557,9 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <div className="field-hud">
         <div className="hud-score"><small>النتيجة حتى الآن</small><b>{liveScore.score === null ? '—' : `${liveScore.score}%`}</b>{liveScore.criticalFailures > 0 && <em>إخفاق حرج</em>}</div>
         <button type="button" className={`hud-auto ${autoAdvance ? 'on' : ''}`} onClick={() => { const v = !autoAdvance; setAutoAdvance(v); try { localStorage.setItem('rq-auto', v ? 'on' : 'off'); } catch { /* ignore */ } }} aria-pressed={autoAdvance}>{autoAdvance ? 'انتقال تلقائي ✓' : 'انتقال تلقائي'}</button>
+        <button type="button" className={`hud-auto ${camAuto ? 'on' : ''}`} onClick={() => { const v = !camAuto; setCamAuto(v); try { localStorage.setItem('rq-cam', v ? 'on' : 'off'); } catch { /* ignore */ } }} aria-pressed={camAuto}>{camAuto ? 'كاميرا تلقائية ✓' : 'كاميرا تلقائية'}</button>
       </div>
+      <SectionProgress questions={questions} values={Object.fromEntries(questions.map(x => [x.id, answers[x.id]?.value as string | null | undefined])) as Record<number, string | null | undefined>} current={q.section} onJump={qid => { setIndex(questions.findIndex(y => y.id === qid)); setMessage(''); }}/>
       <div className="heat-strip" aria-label="خريطة الزيارة">{sectionGroups.map(section => <div className="heat-group" key={section} title={section}>{questions.filter(x => x.section === section).map(x => { const v = answers[x.id]?.value; return <button type="button" key={x.id} aria-label={`البند ${x.id}`} onClick={() => { setIndex(questions.findIndex(y => y.id === x.id)); setMessage(''); }} className={`heat ${v === 'pass' ? 'p' : v === 'fail' ? 'f' : v === 'na' ? 'n' : ''} ${x.id === q.id ? 'cur' : ''} ${x.severity === 'Critical' ? 'crit' : ''}`}/>; })}</div>)}</div>
       <div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length} · اسحب للتنقل</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><div className={`sev-line ${q.severity.toLowerCase()}`}><span>{q.severity === 'Critical' ? 'حرج' : q.severity === 'Major' ? 'رئيسي' : 'ثانوي'}</span>وزن {WEIGHTS[q.severity]} · التصحيح خلال {q.severity === 'Critical' ? '24 ساعة' : q.severity === 'Major' ? '72 ساعة' : '7 أيام'}{q.severity === 'Critical' && <b> · الإخفاق يجعل الزيارة غير مقبولة</b>}</div>
       {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(وفق نموذج الفحص)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · مقارنة بالمعيار المعتمد</div>}{hasRange && answer.actual !== undefined && (answer.actual < q.measurement.min! || answer.actual > q.measurement.max!) && answer.value !== 'fail' && <div className="nudge"><span>القراءة خارج النطاق المعتمد. هل البند غير مطابق؟</span><button type="button" onClick={() => choose('fail')}>تسجيل «غير مطابق»</button></div>}</div>; })()}
@@ -514,10 +571,11 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         {q.inputType === 'date' && <input className="typed-input" type="date" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} data-testid={`input-date-${q.id}`}/>}
         {q.inputType === 'photo' && <p className="typed-help">أرفق صورة من قسم الأدلة أدناه.</p>}
       </div>}
-      <div className="answer-label">نتيجة الفحص <em>*</em></div><div className="answer-options">
+      <div className="answer-label">نتيجة الفحص <em>*</em></div>{!isPhone && <div className="answer-options">
         {[['pass','مطابق','مطابق للمعيار',Check],['fail','غير مطابق','يتطلب متابعة',X],['na','لا ينطبق','يُستبعد من النتيجة',CircleHelp]].map(([value,label,sub,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`answer-option ${answer.value === value ? `chosen ${value}` : ''}`} data-testid={`answer-${value}-${q.id}`}><span className="choice-icon"><Icon size={18}/></span><b>{label as string}</b><small>{sub as string}</small></button>)}
-      </div>
-      <RecurringHint prev={prev} questionId={q.id} answer={answer} onConfirm={v => update({ recurring: v })}/>{TASTING_SCORE_IDS.includes(q.id) && <TastingScores value={answer.tasting} onChange={t => update({ tasting: t })}/>}{answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em> <DictateButton onText={t => update({ observation: `${answers[q.id]?.observation ? answers[q.id].observation.trim() + ' ' : ''}${t}` })}/></span><textarea autoFocus value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="ماذا رأيت؟ وأين؟ ما أثره على العميل أو الجودة؟" data-testid={`input-observation-${q.id}`}/><WritingHelper kind="observation" value={answer.observation} onApply={(next, original) => update({ observation: next, textHistory: [...(answer.textHistory ?? []), { field: 'observation', original, accepted: next, at: stamp() }] })}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={q.severity} disabled title="الخطورة محددة في قائمة الفحص المعتمدة" data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة <DictateButton onText={t => update({ recommendation: `${answers[q.id]?.recommendation ? answers[q.id].recommendation.trim() + ' ' : ''}${t}` })}/></span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/><WritingHelper kind="recommendation" value={answer.recommendation} onApply={(next, original) => update({ recommendation: next, textHistory: [...(answer.textHistory ?? []), { field: 'recommendation', original, accepted: next, at: stamp() }] })}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
+      </div>}
+      <RecurringHint prev={prev} questionId={q.id} answer={answer} onConfirm={v => update({ recurring: v })}/>{TASTING_SCORE_IDS.includes(q.id) && <TastingScores value={answer.tasting} onChange={t => update({ tasting: t })}/>}{answer.value === 'fail' && <div className="finding-fields"><label className="field"><span>وصف الملاحظة <em>*</em> <DictateButton onText={t => update({ observation: `${answers[q.id]?.observation ? answers[q.id].observation.trim() + ' ' : ''}${t}` })}/></span><textarea autoFocus value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="ماذا رأيت؟ وأين؟ ما أثره على العميل أو الجودة؟" data-testid={`input-observation-${q.id}`}/><QuickPhrases kind="observation" value={answer.observation} onChange={v => update({ observation: v })}/><WritingHelper kind="observation" value={answer.observation} onApply={(next, original) => update({ observation: next, textHistory: [...(answer.textHistory ?? []), { field: 'observation', original, accepted: next, at: stamp() }] })}/></label><div className="field-row"><label className="field"><span>درجة الخطورة</span><select value={q.severity} disabled title="الخطورة محددة في قائمة الفحص المعتمدة" data-testid={`select-severity-${q.id}`}><option value="Critical">حرج · وزن 10</option><option value="Major">رئيسي · وزن 5</option><option value="Minor">بسيط · وزن 1</option></select></label><label className="recurring-toggle"><input type="checkbox" checked={answer.recurring} onChange={e => update({ recurring: e.target.checked })} data-testid={`toggle-recurring-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>ملاحظة متكررة</span></label></div><label className="field"><span>التوصية المقترحة <DictateButton onText={t => update({ recommendation: `${answers[q.id]?.recommendation ? answers[q.id].recommendation.trim() + ' ' : ''}${t}` })}/></span><textarea value={answer.recommendation} onChange={e => update({ recommendation: e.target.value })} placeholder="ما الإجراء الأنسب لمعالجة الملاحظة؟" data-testid={`input-recommendation-${q.id}`}/><QuickPhrases kind="recommendation" value={answer.recommendation} onChange={v => update({ recommendation: v })}/><WritingHelper kind="recommendation" value={answer.recommendation} onApply={(next, original) => update({ recommendation: next, textHistory: [...(answer.textHistory ?? []), { field: 'recommendation', original, accepted: next, at: stamp() }] })}/></label><button className="text-link action-create" onClick={() => setActionForm(actionForm === q.id ? null : q.id)}><Plus size={16}/> إنشاء إجراء تصحيحي</button>{actionForm === q.id && <div className="inline-action-form"><label className="field"><span>المسؤول</span><input value={responsible} onChange={e => setResponsible(e.target.value)} placeholder="اسم المسؤول"/></label><label className="field"><span>تاريخ الاستحقاق</span><input type="date" value={dueDate} onChange={e => setDueDate(e.target.value)}/></label><Button onClick={() => addAction(q)} disabled={!answer.observation.trim()}>حفظ الإجراء</Button></div>}</div>}
+      {noteOpen && answer.value === 'pass' && <label className="field na-reason"><span>ملاحظة على البند <small>اختياري</small> <DictateButton onText={t => update({ observation: `${answers[q.id]?.observation ? answers[q.id].observation.trim() + ' ' : ''}${t}` })}/></span><textarea autoFocus value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="أي تفصيل تحب تسجله على هذا البند…"/></label>}
       {answer.value === 'na' && <label className="field na-reason"><span>سبب عدم الانطباق <small>اختياري</small></span><textarea value={answer.observation} onChange={e => update({ observation: e.target.value })} placeholder="اكتب سبب استبعاد هذا السؤال من الزيارة…"/></label>}
       {answer.initialValue === 'fail' && answer.value === 'pass' && <div className="correction-record"><label className="recurring-toggle"><input type="checkbox" checked={Boolean(answer.correctedDuringVisit)} onChange={e => update({ correctedDuringVisit: e.target.checked })} data-testid={`toggle-corrected-${q.id}`}/><span className="fake-check"><Check size={13}/></span><span>تم تصحيح الملاحظة خلال الزيارة</span></label>{answer.correctedDuringVisit && <label className="field"><span>تفاصيل التصحيح <small>اختياري</small></span><textarea value={answer.correctionNote || ''} onChange={e => update({ correctionNote: e.target.value })} placeholder="ما الذي تم تصحيحه؟"/></label>}</div>}
       <div className="evidence-block">
@@ -525,7 +583,18 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو يُحفظ على هذا الجهاز فقط.</p>
         {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <video src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button><input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
-      </Card><div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div></div></div>}
+      </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</div></div>}
+    {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
+    {fieldMode && isPhone && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="toolbar" aria-label="أزرار الإجابة السريعة">
+      <div className="ab-answers">{[['pass','مطابق',Check],['fail','غير مطابق',X],['na','لا ينطبق',CircleHelp]].map(([value,label,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`ab-btn ${value} ${answer.value === value ? 'chosen' : ''}`} data-testid={`answer-${value}-${q.id}`}><Icon size={22}/><b>{label as string}</b></button>)}</div>
+      <div className="ab-tools">
+        <button type="button" className="ab-prev" disabled={index === 0} onClick={() => { setIndex(Math.max(0, index - 1)); setMessage(''); }} aria-label="السابق"><ArrowRight size={18}/></button>
+        <button type="button" onClick={() => { if (answer.value === 'fail') { document.querySelector<HTMLTextAreaElement>('.finding-fields textarea')?.focus(); } else { if (answer.value == null) { setMessage('اختر النتيجة أولاً ثم أضف ملاحظة.'); return; } setNoteOpen(true); } }}><NotebookPen size={17}/> ملاحظة</button>
+        <button type="button" onClick={() => cameraRef.current?.click()} className={answer.attachments.length ? 'has' : ''}><Camera size={17}/> صورة{answer.attachments.length ? ` (${answer.attachments.length})` : ''}</button>
+        <button type="button" onClick={jumpIncomplete} title="الانتقال لأقرب بند لم يُجَب"><SkipForward size={17}/> غير مكتمل</button>
+        {index < questions.length - 1 ? <button type="button" className="ab-next" onClick={() => goNext()} data-testid="button-next-question" aria-label="التالي"><ArrowLeft size={18}/></button> : <button type="button" className="ab-next" onClick={() => setReview(true)} data-testid="button-review" aria-label="مراجعة وإنهاء"><FileCheck2 size={18}/></button>}
+      </div>
+    </div>, document.body)}
     {toast && <div className="field-toast" role="status"><span>{toast.text}</span><button onClick={() => { setIndex(toast.back); setToast(null); }}>تراجع</button></div>}
   </div>;
 }
