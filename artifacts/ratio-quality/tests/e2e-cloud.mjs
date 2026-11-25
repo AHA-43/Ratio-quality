@@ -182,6 +182,20 @@ await step('new user is asked for a display name once; it is saved and used in t
   assert.equal(name, 'سارة العتيبي');
   await c.close();
 });
+await step('quality lead imports a past report file; it lands in the cloud as an approved, read-only report with photos', async () => {
+  const { readFileSync, writeFileSync } = await import('node:fs');
+  const photo = 'data:image/jpeg;base64,' + readFileSync(new URL('./fixture-small.jpg', import.meta.url)).toString('base64');
+  const rep = { id: 'imp-e2e-1', status: 'finalized', workflow: 'approved', branchId: 'HAS.06', branchName: 'الاحساء - الفتح', inspector: 'فريق الجودة', date: '2026-10-06 09:00', type: 'زيارة دورية', shift: '', employees: 0, checklistVersion: 'legacy-import',
+    questionSnapshot: [{ id: 1001, section: 'ملاحظات الزيارة', title: 'نظافة خزان الماء', severity: 'Major', criterion: '', legacy: true }],
+    answers: { 1001: { value: 'fail', initialValue: 'fail', observation: 'خزان الماء غير نظيف', recommendation: 'تنظيف الخزان', recurring: false, severity: 'Major', attachments: [{ id: 'imp-ph-1', name: 'p.jpg', type: 'image/jpeg', data: photo, caption: '' }] } },
+    createdAt: '2026-10-06T09:00:00.000Z', updatedAt: '2026-10-06T09:00:00.000Z', imported: { source: 'تقرير الفتح (PDF)', importedAt: '', classification: 'جيد', counts: { total: 1 } } };
+  const file = '/tmp/rq-legacy-e2e.json'; writeFileSync(file, JSON.stringify({ format: 'ratio-legacy-reports', version: 1, reports: [rep] }));
+  await B.p.goto(APP + '/settings'); await B.p.getByTestId('input-legacy-file').setInputFiles(file);
+  await B.p.getByTestId('button-legacy-import').click(); await B.p.waitForSelector('.legacy-import .form-ok', { timeout: 20000 });
+  let d; for (let k = 0; k < 30 && !(d?.fields?.answers); k++) { await B.p.waitForTimeout(1000); d = await fsGet('inspections/imp-e2e-1'); }
+  assert.equal(val(d.fields.workflow), 'approved'); assert.ok(d.fields.imported, 'imported block stored');
+  await B.p.goto(APP + '/reports/imp-e2e-1'); await B.p.waitForSelector('.legacy-banner'); assert.match(await B.p.locator('.legacy-banner').innerText(), /جيد/);
+});
 await step('admin adds a user from the Users page; the new account works and the admin stays signed in', async () => {
   const C = await newDevice(); await login(C.p, 'admin@test.local');
   await C.p.goto(APP + '/users'); await C.p.waitForSelector('[data-testid=button-add-user]');

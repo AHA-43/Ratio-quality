@@ -856,3 +856,13 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .created-user dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 8px; align-items: baseline; } .created-user dt { color: #55558a; font-size: 12.5px; } .created-user dd { margin: 0; font-weight: 700; } .cu-pw { font-size: 22px; letter-spacing: .04em; font-variant-numeric: tabular-nums; user-select: all; text-align: right; }
 .account-form { display: grid; gap: 12px; margin-top: 8px; }
 .topbar .avatar { width: auto !important; min-width: 44px; padding-inline: 14px; border-radius: 22px; }
+.legacy-banner { margin: 0 0 14px; padding: 14px 16px; border-radius: 16px; background: #fbf8f2; border: 1px dashed #d7c7ad; display: grid; gap: 8px; }
+.legacy-banner .lb-head b { display: block; font-size: 15px; color: var(--navy); margin-top: 2px; }
+.lb-stats { display: flex; flex-wrap: wrap; gap: 6px; } .lb-stats span { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 12px; background: #efece5; color: #3a3a5a; }
+.lb-stats .crit { background: #fde8e6; color: #b3261e; } .lb-stats .maj { background: #f6e9e1; color: #8a4a2a; } .lb-stats .min { background: var(--corn-soft); color: var(--navy-2); }
+.legacy-banner small { color: #5c5c80; font-size: 12px; line-height: 1.7; } .lb-block { font-size: 13px; line-height: 1.8; } .lb-block ul { margin: 4px 0 0; padding-inline-start: 18px; } .lb-block summary { cursor: pointer; font-weight: 700; color: var(--navy); min-height: 40px; display: flex; align-items: center; }
+.legacy-cls { font-size: 13px !important; }
+.li-pick { min-height: 46px; cursor: pointer; width: fit-content; } .li-list { display: grid; gap: 8px; margin-top: 10px; } .li-list ul { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; border: 1px solid var(--milk-line); border-radius: 12px; }
+.li-list li { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-top: 1px solid #efece5; font-size: 13px; } .li-list li:first-child { border: 0; } .li-list li small { color: #5c5c80; } .li-list li.dup { opacity: .6; }
+/* past reports imported from files: no weighted score, no approval workflow, no barista evaluation */
+.is-imported .report-score, .is-imported .exec-sections, .is-imported .approval-panel, .is-imported .report-actions a[href$="/baristas"], .is-imported .submitted-banner { display: none !important; }

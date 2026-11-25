@@ -14,7 +14,7 @@ export async function buildVisitDeck(i: Inspection, actions: ActionItem[], asset
   const p: Pptx = new PptxGenJS(); p.layout = 'LAYOUT_16x9'; p.rtlMode = true;
   p.title = `تقرير زيارة الجودة — ${i.branchName}`; p.company = 'Ratio Specialty Coffee'; p.author = i.inspector;
   const s = calculateScore(i.questionSnapshot, i.answers);
-  const cls = s.criticalFailures ? 'غير مقبول' : s.classification ?? '';
+  const cls = i.imported ? i.imported.classification ?? '' : s.criticalFailures ? 'غير مقبول' : s.classification ?? '';
   const tone = CLS[cls] ?? { color: C.cornInk, soft: C.cornSoft };
   const date = i.date.slice(0, 10);
   const foot = `ريشيو · تقرير زيارة الجودة · ${i.branchName} · ${date}${i.workflow === 'approved' ? '' : ' · نسخة غير معتمدة'}`;
@@ -84,7 +84,7 @@ export async function buildVisitDeck(i: Inspection, actions: ActionItem[], asset
       findings.slice(start, start + per).forEach((q, k) => { const col = k % 2, row = Math.floor(k / 2); const x = col === 0 ? 5.05 : 0.6, y = 1.65 + row * 0.66;
         card(p, ov, x, y, 4.35, 0.56);
         ov.addShape(p.ShapeType.rect, { x: x + 4.27, y: y + 0.1, w: 0.06, h: 0.36, fill: { color: SEV[q.severity].color }, line: { color: SEV[q.severity].color, width: 0 } });
-        T(ov, String(q.id).padStart(2, '0'), { x: x + 3.6, y: y + 0.1, w: 0.55, h: 0.36, fontSize: 13, bold: true, color: SEV[q.severity].color, valign: 'middle', align: 'center' });
+        T(ov, String(q.legacy ? q.id - 1000 : q.id).padStart(2, '0'), { x: x + 3.6, y: y + 0.1, w: 0.55, h: 0.36, fontSize: 13, bold: true, color: SEV[q.severity].color, valign: 'middle', align: 'center' });
         T(ov, short(q.title, 46), { x: x + 0.15, y: y + 0.07, w: 3.45, h: 0.27, fontSize: 10.5, bold: true, color: C.navy });
         T(ov, `${SEV[q.severity].ar} · ${SEV[q.severity].due}${i.answers[q.id]?.recurring ? ' · متكرر' : ''}`, { x: x + 0.15, y: y + 0.32, w: 3.45, h: 0.2, fontSize: 8.5, color: C.muted }); });
     }
@@ -106,7 +106,7 @@ export async function buildVisitDeck(i: Inspection, actions: ActionItem[], asset
     } else { card(p, f, 0.5, 0.6, 4.3, 4.35, C.white); mark(p, f, 1.9, 1.75, 1.5, C.milk, 0); T(f, 'لا توجد صورة مرفقة', { x: 0.5, y: 3.55, w: 4.3, h: 0.3, fontSize: 11, color: C.muted, align: 'center' }); }
     // text panel (right)
     f.addShape(p.ShapeType.ellipse, { x: 8.75, y: 0.55, w: 0.65, h: 0.65, fill: { color: sev.color }, line: { color: sev.color, width: 0 } });
-    T(f, String(q.id), { x: 8.75, y: 0.55, w: 0.65, h: 0.65, fontSize: 15, bold: true, color: C.white, align: 'center', valign: 'middle' });
+    T(f, String(q.legacy ? q.id - 1000 : q.id), { x: 8.75, y: 0.55, w: 0.65, h: 0.65, fontSize: 15, bold: true, color: C.white, align: 'center', valign: 'middle' });
     eyebrow(f, `الملاحظة ${n} من ${findings.length}  ·  ${q.section}`, 5.1, 0.63, 3.55, C.muted);
     T(f, q.title, { x: 5.1, y: 0.9, w: 3.55, h: 0.9, fontSize: q.title.length > 45 ? 15 : 18, bold: true, color: C.navy, fit: 'shrink' });
     const chips: [string, string, string][] = [[sev.ar, sev.color, sev.soft], [sev.due, C.navy, 'ECE9F7']];

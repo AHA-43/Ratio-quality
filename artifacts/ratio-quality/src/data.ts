@@ -25,7 +25,7 @@ export type Answer = {
   /** Text before the inspector accepted a writing-helper suggestion (audit). */
   textHistory?: { field: 'observation' | 'recommendation'; original: string; accepted: string; at: string }[];
 };
-export type Question = { id: number; section: string; title: string; severity: Severity; criterion: string; inputType?: 'status' | 'numeric' | 'text' | 'single-choice' | 'multi-choice' | 'rating' | 'date' | 'photo'; options?: string[]; measurement?: { unit: string; min?: number; max?: number } };
+export type Question = { id: number; section: string; title: string; severity: Severity; criterion: string; /** Finding imported from a past free-form report: not part of the 46-item score. */ legacy?: boolean; inputType?: 'status' | 'numeric' | 'text' | 'single-choice' | 'multi-choice' | 'rating' | 'date' | 'photo'; options?: string[]; measurement?: { unit: string; min?: number; max?: number } };
 export type Inspection = {
   id: string; status: 'draft' | 'finalized'; branchId: string; branchName: string; inspector: string;
   date: string; type: string; shift: string; employees: number; answers: Record<number, Answer>;
@@ -46,6 +46,8 @@ export type Inspection = {
   amendmentOf?: string; amendmentReason?: string; revision?: number;
   /** Practice visit: never leaves this device and is excluded from every statistic. */
   training?: boolean;
+  /** Past report imported from a file (PDF/PowerPoint). No weighted score: it was not built on the 46-item checklist. */
+  imported?: { source: string; importedAt: string; classification?: string | null; counts?: { critical?: number; major?: number; minor?: number; total?: number }; team?: string[]; general?: string[]; positives?: { title: string; text: string }[]; unlabeledSeverity?: number };
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];

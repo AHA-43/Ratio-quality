@@ -27,3 +27,9 @@ export function runScoringUnitTests() {
   assert.equal(good.score, 68.8);
 }
 test('weighted inspection scoring rules', runScoringUnitTests);
+
+test('imported free-form findings (legacy questions) never produce a weighted score', () => {
+  const q = [{ id: 1001, section: 'ملاحظات', title: 'x', severity: 'Critical', criterion: '', legacy: true }] as never;
+  const r = calculateScore(q, { 1001: { value: 'fail', initialValue: 'fail', observation: '', recommendation: '', recurring: false, severity: 'Critical', attachments: [] } } as never);
+  assert.equal(r.score, null); assert.equal(r.criticalFailures, 0);
+});

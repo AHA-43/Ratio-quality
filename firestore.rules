@@ -34,7 +34,9 @@ service cloud.firestore {
     // approved ones are locked for everyone.
     match /inspections/{id} {
       allow read: if active();
-      allow create: if active() && request.resource.data.get('workflow', '') != 'approved' && notTraining();
+      allow create: if active() && notTraining() && (request.resource.data.get('workflow', '') != 'approved'
+        // past reports imported from files arrive already approved; only quality leads may add them
+        || (isLead() && request.resource.data.get('imported', null) != null));
       allow update: if active() && resource.data.get('workflow', '') != 'approved' && (
            (resource.data.status == 'draft' && request.resource.data.get('workflow', '') != 'approved' && ownsDraft() && notTraining())
         || (resource.data.status == 'finalized' && canApprove())

@@ -15,6 +15,7 @@ export function calculateScore(questions: Question[], answers: Record<number, An
   let applicableWeight = 0;
   let criticalFailures = 0;
   for (const q of questions) {
+    if (q.legacy) continue; // imported free-form findings never feed the weighted score
     const answer = answers[q.id];
     if (!answer || answer.value === null || (answer.value === 'na' && answer.initialValue !== 'fail')) continue;
     const effectiveValue = answer.initialValue === 'fail' ? 'fail' : answer.value;

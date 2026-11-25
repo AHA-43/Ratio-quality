@@ -9,6 +9,7 @@ const DAY = 86400000;
 export const dateOf = (i: Pick<Inspection, 'date'>) => { const t = Date.parse(i.date.replace(' ', 'T')); return Number.isNaN(t) ? 0 : t; };
 const failedAt = (i: Inspection, qid: number) => { const a = i.answers[qid]; return Boolean(a && (a.value === 'fail' || a.initialValue === 'fail')); };
 const isReal = (i: Inspection) => i.status === 'finalized' && !i.training;
+const isScored = (i: Inspection) => isReal(i) && !i.imported;
 const sevRank: Record<string, number> = { Critical: 0, Major: 1, Minor: 2 };
 const overdue = (a: ActionItem, now: number) => a.status !== 'مغلق' && Boolean(a.dueDate) && a.dueDate < new Date(now).toISOString().slice(0, 10);
 
@@ -20,8 +21,9 @@ export type Focus = { top: FocusItem[]; improving: BranchTrend[]; declining: Bra
 export function focusInsights(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, now = Date.now(), windowDays = 90): Focus {
   const real = input.inspections.filter(isReal);
   const active = input.branches.filter(b => !b.archived && !b.demo);
-  const recent = real.filter(i => now - dateOf(i) <= windowDays * DAY);
-  const prior = real.filter(i => { const d = now - dateOf(i); return d > windowDays * DAY && d <= 2 * windowDays * DAY; });
+  const scored = real.filter(isScored);
+  const recent = scored.filter(i => now - dateOf(i) <= windowDays * DAY);
+  const prior = scored.filter(i => { const d = now - dateOf(i); return d > windowDays * DAY && d <= 2 * windowDays * DAY; });
   const stat = (list: Inspection[]) => {
     const m = new Map<number, { q: FocusItem['q']; fails: number; of: number; branches: Map<string, number> }>();
     for (const i of list) for (const q of i.questionSnapshot) {
@@ -41,8 +43,9 @@ export function focusInsights(input: { inspections: Inspection[]; branches: Bran
   const trends: BranchTrend[] = [];
   const lastVisit = new Map<string, number>();
   for (const b of active) {
-    const mine = real.filter(i => i.branchId === b.id).sort((x, y) => dateOf(y) - dateOf(x));
-    if (mine[0]) lastVisit.set(b.id, dateOf(mine[0]));
+    const all = real.filter(i => i.branchId === b.id).sort((x, y) => dateOf(y) - dateOf(x));
+    if (all[0]) lastVisit.set(b.id, dateOf(all[0]));
+    const mine = all.filter(isScored);
     if (mine.length >= 2) {
       const s1 = calculateScore(mine[0].questionSnapshot, mine[0].answers).score, s2 = calculateScore(mine[1].questionSnapshot, mine[1].answers).score;
       if (s1 !== null && s2 !== null) trends.push({ branch: b, last: s1, prev: s2, delta: +(s1 - s2).toFixed(1) });

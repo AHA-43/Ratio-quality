@@ -119,3 +119,9 @@ test('inspection counter cannot be reset inside a year, only roll over to a new 
   await assertSucceeds(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2027, seq: 1 }));
   await assertFails(updateDoc(doc(as('insp'), 'counters/inspections'), { year: 2026, seq: 2 }));
 });
+
+test('past reports can be imported as approved by quality leads only', async () => {
+  await assertSucceeds(setDoc(doc(as('qm'), 'inspections/imp1'), { status: 'finalized', workflow: 'approved', imported: { source: 'old.pdf' } }));
+  await assertFails(setDoc(doc(as('insp'), 'inspections/imp2'), { status: 'finalized', workflow: 'approved', imported: { source: 'old.pdf' } }));
+  await assertFails(updateDoc(doc(as('qm'), 'inspections/imp1'), { branchName: 'x' }));
+});
