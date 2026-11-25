@@ -207,7 +207,7 @@ export async function syncAll() {
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 export const emptyAnswer = (): Answer => ({ value: null, observation: '', recommendation: '', recurring: false, severity: 'Minor', attachments: [] });
 type MasterBranch = { id: string; code: string | null; nameAr: string; status: string; ownership?: string; city?: string };
-const BRANCH_MASTER_VERSION = 'master-4';
+const BRANCH_MASTER_VERSION = 'master-5';
 export async function initializeBranches() {
   const branches = await list<Branch>('branches');
   let applied = '';
