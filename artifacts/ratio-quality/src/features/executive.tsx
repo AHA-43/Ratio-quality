@@ -44,7 +44,7 @@ export function ExecutivePage({ data }: { data: D }) {
   };
   const tone = s.avg === null ? 'navy' : s.avg >= 90 ? 'good' : s.avg >= 80 ? 'ok' : s.avg >= 70 ? 'warn' : 'bad';
   return <div className="page-content ex-page">
-    <div className="page-title"><div><span className="eyebrow">نظرة تنفيذية</span><h1>لوحة الإدارة</h1><p>خلاصة أداء الجودة في الفروع، جاهزة للعرض والطباعة.</p></div><button type="button" className="button button-outline no-print" onClick={() => window.print()}><Printer size={16}/> طباعة / PDF</button></div>
+    <div className="page-title"><div><span className="eyebrow">نظرة تنفيذية</span><h1>لوحة الإدارة</h1><p>خلاصة أداء الجودة في الفروع، جاهزة للعرض والطباعة.</p></div><button type="button" className="button button-outline no-print" disabled={busy} onClick={async () => { setBusy(true); try { const el = document.querySelector<HTMLElement>('.ex-page'); const [{ elementToPdf }, { deliver }] = await Promise.all([import('./pdf-export'), import('./exports')]); if (el) await deliver(await elementToPdf(el, { wrapperClass: 'page-content ex-page', width: 900 }), `Ratio-executive-${new Date().toISOString().slice(0, 10)}.pdf`, typeof navigator !== 'undefined' && 'share' in navigator); } catch (e) { console.error(e); setErr('تعذّر إنشاء PDF.'); } setBusy(false); }}><Printer size={16}/> {busy ? 'جارٍ التجهيز…' : 'PDF'}</button></div>
     <div className="pr-tabs no-print ex-range" role="tablist">{[[30, 'آخر 30 يوماً'], [90, 'آخر 90 يوماً'], [365, 'آخر سنة']].map(([d, l]) => <button key={d} role="tab" aria-selected={days === d} className={days === d ? 'on' : ''} onClick={() => setDays(d as number)}>{l}</button>)}</div>
 
     <section className={`ex-hero tone-${tone}`}>
