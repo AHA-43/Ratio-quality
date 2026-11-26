@@ -1,13 +1,13 @@
 // Estimated cloud storage used by visits and their photos, against the free Firestore quota (1 GiB).
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Database } from 'lucide-react';
-import type { Inspection } from '../data';
+import { mediaStats, type Inspection } from '../data';
 
 const QUOTA = 1024 ** 3;
 const bytesOf = (s: string) => Math.round(s.length * 1.02); // data URLs are ASCII: ~1 byte per char, + doc overhead
 
-export function estimateUsage(list: Inspection[]) {
-  let photos = 0, photoCount = 0, docs = 0;
+export function estimateUsage(list: Inspection[], media = { bytes: 0, images: 0 }) {
+  let photos = media.bytes, photoCount = media.images, docs = 0;
   for (const i of list) {
     if (i.training) continue;
     const atts = [...Object.values(i.answers ?? {}).flatMap(a => a.attachments ?? []), ...(i.facade ? [i.facade] : [])];
@@ -20,7 +20,9 @@ export function estimateUsage(list: Inspection[]) {
 const fmt = (b: number) => b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${Math.max(1, Math.round(b / 1024 ** 2))} MB`;
 
 export function CloudUsageCard({ inspections }: { inspections: Inspection[] }) {
-  const u = useMemo(() => estimateUsage(inspections), [inspections]);
+  const [media, setMedia] = useState({ bytes: 0, images: 0 });
+  useEffect(() => { mediaStats().then(setMedia).catch(() => {}); }, [inspections.length]);
+  const u = useMemo(() => estimateUsage(inspections, media), [inspections, media]);
   const tone = u.pct >= 80 ? 'bad' : u.pct >= 60 ? 'warn' : 'ok';
   return <section className="surface-card settings-card cloud-usage">
     <div className="card-heading"><div><span className="eyebrow">السحابة</span><h2>المساحة المستخدمة</h2></div><Database size={20}/></div>

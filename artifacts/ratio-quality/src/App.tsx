@@ -6,8 +6,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import { Route, Switch, useLocation, useRoute, Router as WouterRouter, Link } from 'wouter';
 import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { Form } from '@/components/ui/form';
 import { createPortal } from 'react-dom';
 import { CalendarCheck, GraduationCap, PenLine, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
@@ -20,6 +18,7 @@ import { FacadeCapture, facadeFor } from './features/facade';
 import { ApprovalAlert } from './features/approval-alert';
 import { sessionGreeting } from './features/greeting';
 import { CloudUsageCard } from './features/cloud-usage';
+import { MediaImg, MediaVideo, useMedia as useMediaData } from './features/media';
 import { appVersion, buildDiagnostics, clearErrors, getErrors } from './errorlog';
 import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
 import { useMyPosition, type BranchScore } from './features/position';
@@ -54,7 +53,7 @@ const BaristasPage = lazyRetry(() => import('./features/pages').then(m => ({ def
 const EquipmentPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.EquipmentPage })));
 const UsersPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.UsersPage })));
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Attachment, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, onDataChange, saveConflict, pendingUploadIds, startLiveSync, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Attachment, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, hydrate, onConflict, onDataChange, saveConflict, pendingUploadIds, startLiveSync, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -82,15 +81,19 @@ const stamp = () => new Date().toISOString();
 /** Corrective-action deadlines from the approved checklist: Critical 24h, Major 72h, Minor 7 days. */
 const DUE_HOURS = { Critical: 24, Major: 72, Minor: 168 } as const;
 const defaultDueDate = (sev: keyof typeof DUE_HOURS) => new Date(Date.now() + DUE_HOURS[sev] * 3600e3).toISOString().slice(0, 10);
-const inspectionStartSchema = z.object({
-  branchId: z.string().min(1, 'اختر الفرع.'),
-  inspector: z.string().trim().min(1, 'اكتب اسم المفتش.'),
-  type: z.string().min(1),
-  date: z.string().min(1, 'حدد تاريخ ووقت الزيارة.'),
-  shift: z.enum(['صباحية', 'مسائية']),
-  employees: z.number().int().min(0, 'أدخل عدداً صحيحاً غير سالب.'),
-});
-type InspectionStartValues = z.infer<typeof inspectionStartSchema>;
+type InspectionStartValues = { branchId: string; inspector: string; type: string; date: string; shift: 'صباحية' | 'مسائية'; employees: number };
+/** Tiny form resolver (replaces a schema library that weighed ~60 KB on first load). */
+const startResolver = async (v: InspectionStartValues) => {
+  const errors: Record<string, { type: string; message: string }> = {};
+  const bad = (k: keyof InspectionStartValues, message: string) => { errors[k] = { type: 'validate', message }; };
+  if (!v.branchId) bad('branchId', 'اختر الفرع.');
+  if (!String(v.inspector ?? '').trim()) bad('inspector', 'اكتب اسم المفتش.');
+  if (!v.type) bad('type', 'اختر نوع الزيارة.');
+  if (!v.date) bad('date', 'حدد تاريخ ووقت الزيارة.');
+  if (v.shift !== 'صباحية' && v.shift !== 'مسائية') bad('shift', 'اختر الفترة.');
+  if (!Number.isInteger(v.employees) || v.employees < 0) bad('employees', 'أدخل عدداً صحيحاً غير سالب.');
+  return Object.keys(errors).length ? { values: {}, errors } : { values: { ...v, inspector: v.inspector.trim() }, errors: {} };
+};
 const localDateTime = () => {
   const now = new Date();
   return new Date(now.getTime() - now.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
@@ -226,6 +229,11 @@ function EmptyState({ icon: Icon = ClipboardCheck, title, text, action }: { icon
   return <div className="empty-state"><span className="empty-icon"><Icon size={24}/></span><h2 className="empty-title">{title}</h2><p>{text}</p>{action}</div>;
 }
 function StatusPill({ children, tone = 'neutral' }: { children: ReactNode; tone?: string }) { return <span className={`status-pill tone-${tone}`}>{children}</span>; }
+/** Loads the photo (from the device store if needed) before opening the annotator. */
+function AnnotatorFor({ att, onCancel, onSave }: { att: Attachment; onCancel: () => void; onSave: (d: string) => void }) {
+  const src = useMediaData(att);
+  return src ? <PhotoAnnotator src={src} onCancel={onCancel} onSave={onSave}/> : null;
+}
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) { return <section className={`surface-card ${className}`}>{children}</section>; }
 
 function useLocalData() {
@@ -415,7 +423,7 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
   const canAddFacade = inspection.workflow !== 'approved' && (inspection.status === 'draft' || canApprove(me));
   const withFacade = fac ? { ...inspection, facade: fac.photo } : inspection;
   return <div className={`page-content report-page ${inspection.imported ? 'is-imported' : ''}`}><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><ExportBar inspection={withFacade} actions={data.actions.filter(x => x.inspectionId === inspection.id)}/><Link href={`/inspection/${inspection.id}/baristas`} className="button button-outline">تقييم الباريستا</Link></div><article className="print-report">
-    <CelebrationGate inspection={inspection} count={data.inspections.filter(x => x.status === 'finalized' && (inspection.inspectorUid ? x.inspectorUid === inspection.inspectorUid : x.inspector === inspection.inspector)).length}/><div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div>{canAddFacade && (!fac || fac.fromVisit) && <div className="no-print"><FacadeCapture photo={fac?.photo.data} older={fac?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...inspection, facade, updatedAt: stamp() }); await data.refresh(); }}/></div>}{fac && <figure className="report-facade"><img src={fac.photo.data} alt={`واجهة ${inspection.branchName}`}/><figcaption>{inspection.branchName}{fac.fromVisit ? ` · صورة من زيارة ${fac.fromVisit.date.slice(0, 10)}` : ''}</figcaption></figure>}<header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
+    <CelebrationGate inspection={inspection} count={data.inspections.filter(x => x.status === 'finalized' && (inspection.inspectorUid ? x.inspectorUid === inspection.inspectorUid : x.inspector === inspection.inspector)).length}/><div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div>{canAddFacade && (!fac || fac.fromVisit) && <div className="no-print"><FacadeCapture photo={fac?.photo} older={fac?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...inspection, facade, updatedAt: stamp() }); await data.refresh(); }}/></div>}{fac && <figure className="report-facade"><MediaImg att={fac.photo} alt={`واجهة ${inspection.branchName}`}/><figcaption>{inspection.branchName}{fac.fromVisit ? ` · صورة من زيارة ${fac.fromVisit.date.slice(0, 10)}` : ''}</figcaption></figure>}<header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
     {inspection.imported && <LegacyBanner inspection={inspection} findings={findings.length}/>}
     <div className={`report-score cls-${score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : 'good'}`}><div><small>النتيجة الإجمالية</small><strong><CountUp to={score.score} suffix="%"/></strong><em className="cls-badge">{score.classification}</em><span>{score.classification} · {score.criticalFailures ? 'تجاوز حرج يغيّر التصنيف' : 'النتيجة حسب الأوزان'}</span></div><div className="report-score-note"><b>ملخص النتائج</b><p>{inspection.questionSnapshot.length - findings.length} مطابق · {findings.length} ملاحظة · {inspection.questionSnapshot.length} سؤالاً</p><p>حرج {findings.filter(q => inspection.answers[q.id]?.severity === 'Critical').length} · رئيسي {findings.filter(q => inspection.answers[q.id]?.severity === 'Major').length} · بسيط {findings.filter(q => inspection.answers[q.id]?.severity === 'Minor').length} · متكرر {findings.filter(q => inspection.answers[q.id]?.recurring).length}</p><p>الأوزان: حرج {WEIGHTS.Critical} · رئيسي {WEIGHTS.Major} · بسيط {WEIGHTS.Minor}</p></div></div>
     <section className="exec-summary"><h2 className="report-section-title">الملخص التنفيذي</h2>
@@ -426,7 +434,7 @@ function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
     </section>
     <BeforeAfter current={inspection} previous={previousInspection(data.inspections.filter(x => x.date < inspection.date), inspection.branchId, inspection.id)}/>
     <h2 className="report-section-title">النتائج حسب القسم</h2>
-    {sections.map(section => <section className="report-section" key={section}><h3>{section}</h3>{inspection.questionSnapshot.filter(q => q.section === section).map(q => { const a = inspection.answers[q.id]; const wasFailed = a.value === 'fail' || a.initialValue === 'fail'; return <div className="report-finding" key={q.id}><span className={`finding-mark ${wasFailed ? 'failed' : a.value === 'na' ? 'na' : 'passed'}`}>{wasFailed ? '!' : a.value === 'na' ? '—' : '✓'}</span><div><b>{q.legacy ? q.id - 1000 : q.id}. {q.title}</b><small>{q.criterion}</small>{wasFailed && <p>{a.observation || 'لم تسجل ملاحظة تفصيلية.'}{a.value !== 'fail' ? (a.correctedDuringVisit ? ` — تم التصحيح خلال الزيارة: ${a.correctionNote || 'تم تسجيل التصحيح.'}` : ' — تم تعديل الحالة، دون تأكيد تسجيل التصحيح. الإخفاق الأولي محفوظ.') : ''}{a.recommendation && ` — التوصية: ${a.recommendation}`}</p>}{a.attachments.filter(img => !img.type.startsWith('video/') || img.data).map(img => <figure className="report-evidence" key={img.id}>{img.type.startsWith('video/') ? <video className="no-print" src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || 'دليل مرفق'}/>}{img.caption && <figcaption>{img.caption}</figcaption>}</figure>)}</div><StatusPill tone={a.value === 'fail' ? 'red' : a.value === 'na' ? 'neutral' : 'green'}>{a.value === 'fail' ? 'غير مطابق' : a.value === 'na' ? 'لا ينطبق' : 'مطابق حالياً'}</StatusPill></div>; })}</section>)}
+    {sections.map(section => <section className="report-section" key={section}><h3>{section}</h3>{inspection.questionSnapshot.filter(q => q.section === section).map(q => { const a = inspection.answers[q.id]; const wasFailed = a.value === 'fail' || a.initialValue === 'fail'; return <div className="report-finding" key={q.id}><span className={`finding-mark ${wasFailed ? 'failed' : a.value === 'na' ? 'na' : 'passed'}`}>{wasFailed ? '!' : a.value === 'na' ? '—' : '✓'}</span><div><b>{q.legacy ? q.id - 1000 : q.id}. {q.title}</b><small>{q.criterion}</small>{wasFailed && <p>{a.observation || 'لم تسجل ملاحظة تفصيلية.'}{a.value !== 'fail' ? (a.correctedDuringVisit ? ` — تم التصحيح خلال الزيارة: ${a.correctionNote || 'تم تسجيل التصحيح.'}` : ' — تم تعديل الحالة، دون تأكيد تسجيل التصحيح. الإخفاق الأولي محفوظ.') : ''}{a.recommendation && ` — التوصية: ${a.recommendation}`}</p>}{a.attachments.filter(img => !img.type.startsWith('video/') || img.data).map(img => <figure className="report-evidence" key={img.id}>{img.type.startsWith('video/') ? <MediaVideo className="no-print" att={img}/> : <MediaImg att={img} alt={img.caption || 'دليل مرفق'}/>}{img.caption && <figcaption>{img.caption}</figcaption>}</figure>)}</div><StatusPill tone={a.value === 'fail' ? 'red' : a.value === 'na' ? 'neutral' : 'green'}>{a.value === 'fail' ? 'غير مطابق' : a.value === 'na' ? 'لا ينطبق' : 'مطابق حالياً'}</StatusPill></div>; })}</section>)}
     <h2 className="report-section-title">خطة الإجراءات</h2>{data.actions.filter(a => a.inspectionId === inspection.id).length ? data.actions.filter(a => a.inspectionId === inspection.id).map(a => <div className="report-action" key={a.id}><div><b>{a.title}</b><small>{a.description}</small></div><span>{a.responsible || 'دون مسؤول'} · {a.dueDate || 'دون موعد'} · {a.status}</span></div>) : <p className="muted-text">لا توجد إجراءات مرتبطة بهذه الزيارة.</p>}
     <div className="report-closing"><b>ملاحظة المنهجية</b><p>قائمة الفحص وفق نموذج «قائمة فحص زيارة قسم الجودة» المعتمد (46 بنداً). تُقارن القراءات بوصفات ومعايير التشغيل المعتمدة لدى المنشأة.</p></div>
     {inspection.signatures && <div className="report-signatures"><div><small>توقيع المفتش</small>{inspection.signatures.inspector?.image && <img src={inspection.signatures.inspector.image} alt="توقيع المفتش"/>}<b>{inspection.signatures.inspector?.name}</b><span>{inspection.signatures.inspector?.at?.slice(0, 16).replace('T', ' ')}</span></div><div><small>توقيع مسؤول الفرع</small>{inspection.signatures.branch?.image ? <img src={inspection.signatures.branch.image} alt="توقيع مسؤول الفرع"/> : <em>{inspection.signatures.branch?.declinedReason ? `تعذّر التوقيع: ${inspection.signatures.branch.declinedReason}` : ''}</em>}<b>{inspection.signatures.branch?.name}</b><span>{inspection.signatures.branch?.at?.slice(0, 16).replace('T', ' ')}</span></div></div>}
@@ -464,7 +472,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const profile = useProfile();
   const [questions, setQuestions] = useState<Question[]>(QUESTIONS);
   const form = useForm<InspectionStartValues>({
-    resolver: zodResolver(inspectionStartSchema),
+    resolver: startResolver as never,
     defaultValues: { branchId: '', inspector: '', type: types[0], shift: 'صباحية', employees: 2, date: localDateTime() },
   });
   const branchId = form.watch('branchId');
@@ -527,7 +535,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
     <button type="button" className="quick-start" onClick={quickStart} disabled={locating} data-testid="button-quick-start"><span className="qs-ico"><MapPin size={22}/></span><span><b>{locating ? 'جارٍ تحديد موقعك…' : 'ابدأ زيارة في أقرب فرع'}</b><small>ضغطة واحدة: الفرع والتاريخ واسمك تُعبّأ تلقائياً</small></span></button>{nearNote && <div className="alert alert-info quick-note"><Info size={16}/>{nearNote}</div>}
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(v => start(v))}><div className="form-grid">
       <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} scores={branchScores} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
-      <div className="field wide"><span>صورة الفرع من الخارج</span><FacadeCapture photo={facade?.data} onPick={setFacade}/></div>
+      <div className="field wide"><span>صورة الفرع من الخارج</span><FacadeCapture photo={facade} onPick={setFacade}/></div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
       <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" dir="ltr" className="ltr-date" {...form.register('date')} data-testid="input-inspection-date"/></label>
@@ -692,19 +700,19 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const selectPhoto = async (files: FileList | null, autoAnnotate = false) => {
     if (!files) return;
     const readData = (blob: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(); r.readAsDataURL(blob); });
-    // Always compress: keeps evidence readable (max 1600px) and small enough to sync for free (< ~600 KB).
+    // Always compress: keeps evidence readable (max 1400px) and small enough to sync for free (< ~420 KB).
     const toData = async (file: File) => {
       if (!('createImageBitmap' in window)) return readData(file);
       try {
         const bitmap = await createImageBitmap(file);
-        let side = 1600, quality = .8, out = '';
+        let side = 1400, quality = .8, out = '';
         for (let k = 0; k < 6; k++) {
           const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
           const canvas = document.createElement('canvas'); canvas.width = Math.round(bitmap.width * scale); canvas.height = Math.round(bitmap.height * scale);
           const context = canvas.getContext('2d'); if (!context) return readData(file);
           context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
           out = canvas.toDataURL('image/jpeg', quality);
-          if (out.length < 600_000) break;
+          if (out.length < 420_000) break;
           side = Math.round(side * .8); quality = Math.max(.55, quality - .07);
         }
         bitmap.close();
@@ -732,7 +740,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? (cloudEnabled && inspection && pendingUploadIds([inspection]).length ? '✓ محفوظ على الجهاز · بانتظار الرفع' : cloudEnabled ? '✓ محفوظ ومرفوع' : '✓ محفوظ على الجهاز') : 'جارٍ الحفظ…'}</div></div>
     <div className="runner-intro"><div><div className="eyebrow">{inspection.branchName} · {inspection.shift}</div><h1>{inspection.type}</h1><p>{inspection.inspector} <span>·</span> {inspection.date}</p></div><span className="question-counter">{answeredCount}<small> / {questions.length} مكتمل</small></span></div>
     <div className="progress-track"><span style={{ width: `${(answeredCount / questions.length) * 100}%` }}/></div>
-    {inspection.status === 'draft' && !inspection.training && !review && (() => { const f = facadeFor(inspection, data.inspections); return (!f || f.fromVisit) && <FacadeCapture compact photo={f?.photo.data} older={f?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...(inspRef.current ?? inspection), answers, signatures, facade, updatedAt: stamp() }); await data.refresh(); }}/>; })()}
+    {inspection.status === 'draft' && !inspection.training && !review && (() => { const f = facadeFor(inspection, data.inspections); return (!f || f.fromVisit) && <FacadeCapture compact photo={f?.photo} older={f?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...(inspRef.current ?? inspection), answers, signatures, facade, updatedAt: stamp() }); await data.refresh(); }}/>; })()}
     {inspection.training && !review && <div className="training-banner"><b><GraduationCap size={16}/> زيارة تدريبية</b><span>{TRAINING_HINTS[Math.min(index, TRAINING_HINTS.length - 1)]}</span><small>لن تُحفظ في التقارير أو الإحصاءات.</small></div>}
     {message && <div className="alert alert-info"><Info size={16}/>{message}<button onClick={() => setMessage('')} aria-label="إغلاق"><X size={16}/></button></div>}
     {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><ScoreRing score={score.score} label={score.classification || 'غير مكتمل'} tone={score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : score.classification ? 'good' : 'navy'}/><p className="score-explain">{explainScore(score.score, score.classification, score.criticalFailures)}</p><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div>{!inspection.training && <SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>}{!isFinal && <Button className="full-button" disabled={!canFinalize || submitting} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> {inspection.training ? 'إنهاء التدريب' : 'إرسال للاعتماد'}</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>
@@ -766,7 +774,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <div className="evidence-block">
         <div className="evidence-heading"><span><ImagePlus size={17}/> أدلة مصورة {appConfig.photoRequiredOnFail.includes(q.id) ? <em className="req-photo">مطلوبة عند عدم المطابقة</em> : <small>اختياري</small>}</span><label className="upload-button"><Plus size={16}/> إضافة صورة<input type="file" accept="image/*,video/*" multiple onChange={e => { selectPhoto(e.target.files); e.currentTarget.value = ''; }} data-testid={`input-photo-${q.id}`}/></label></div>
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو يُحفظ على هذا الجهاز فقط.</p>
-        {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <video src={img.data} controls playsInline preload="metadata"/> : <img src={img.data} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button>{!img.type.startsWith('video/') && <button type="button" className="ev-annot" onClick={() => setAnnot(img.id)} aria-label="تعليم الصورة"><PenLine size={14}/> {img.annotated ? 'تعديل التعليم' : 'علّم'}</button>}<input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
+        {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <MediaVideo att={img}/> : <MediaImg att={img} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button>{!img.type.startsWith('video/') && <button type="button" className="ev-annot" onClick={() => setAnnot(img.id)} aria-label="تعليم الصورة"><PenLine size={14}/> {img.annotated ? 'تعديل التعليم' : 'علّم'}</button>}<input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
       </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</div></div>}
     {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files, answer.value === 'fail'); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
@@ -780,7 +788,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         {index < questions.length - 1 ? <button type="button" className="ab-next" onClick={() => goNext()} data-testid="button-next-question" aria-label="التالي"><ArrowLeft size={18}/></button> : <button type="button" className="ab-next" onClick={() => setReview(true)} data-testid="button-review" aria-label="مراجعة وإنهاء"><FileCheck2 size={18}/></button>}
       </div>
     </div>, document.body)}
-    {annot && answer.attachments.find(a => a.id === annot) && <PhotoAnnotator src={answer.attachments.find(a => a.id === annot)!.data} onCancel={() => setAnnot(null)} onSave={d => { update({ attachments: answer.attachments.map(a => a.id === annot ? { ...a, data: d, annotated: true } : a) }); setAnnot(null); }}/>}
+    {annot && answer.attachments.find(a => a.id === annot) && <AnnotatorFor att={answer.attachments.find(a => a.id === annot)!} onCancel={() => setAnnot(null)} onSave={d => { update({ attachments: answer.attachments.map(a => a.id === annot ? { ...a, data: d, annotated: true } : a) }); setAnnot(null); }}/>}
     {toast && <div className="field-toast" role="status"><span>{toast.text}</span><button onClick={() => { setIndex(toast.back); setToast(null); }}>تراجع</button></div>}
   </div>;
 }
@@ -815,7 +823,7 @@ function SettingsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
   const commitEdit = async (b: Branch) => { await put('branches', { ...b, name: editName.trim() || b.name, city: editCity.trim(), manager: editManager.trim() }); setEditing(null); data.refresh(); };
   const toggleArchive = async (b: Branch) => { await put('branches', { ...b, archived: !b.archived }); data.refresh(); };
   const exportBackup = async () => {
-    const payload = { product: 'Ratio Quality local backup', formatVersion: 1, exportedAt: stamp(), branches: data.branches, inspections: data.inspections, actions: data.actions, questions: await loadQuestions() };
+    const payload = { product: 'Ratio Quality local backup', formatVersion: 1, exportedAt: stamp(), branches: data.branches, inspections: await Promise.all(data.inspections.map(i => hydrate(i))), actions: data.actions, questions: await loadQuestions() };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `ratio-quality-backup-${new Date().toISOString().slice(0,10)}.json`; link.click(); URL.revokeObjectURL(url); setSavedNote('تم تنزيل نسخة JSON إلى جهازك. احتفظ بها في مكان آمن.');
   };

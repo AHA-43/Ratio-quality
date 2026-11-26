@@ -2,9 +2,10 @@
 import { useRef, useState } from 'react';
 import { Camera, RefreshCw, Store } from 'lucide-react';
 import type { Attachment, Inspection } from '../data';
+import { MediaImg } from './media';
 
-/** Compresses a camera photo to a sync-friendly JPEG (long side ≤ maxSide, ~≤ 600 KB). */
-export async function compressPhoto(file: File, maxSide = 1600): Promise<string> {
+/** Compresses a camera photo to a sync-friendly JPEG (long side ≤ maxSide, ~≤ 420 KB). */
+export async function compressPhoto(file: File, maxSide = 1400): Promise<string> {
   const readData = (blob: Blob) => new Promise<string>((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => reject(); r.readAsDataURL(blob); });
   if (!('createImageBitmap' in window)) return readData(file);
   try {
@@ -16,7 +17,7 @@ export async function compressPhoto(file: File, maxSide = 1600): Promise<string>
       const ctx = canvas.getContext('2d'); if (!ctx) return readData(file);
       ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
       out = canvas.toDataURL('image/jpeg', quality);
-      if (out.length < 600_000) break;
+      if (out.length < 420_000) break;
       side = Math.round(side * .8); quality = Math.max(.55, quality - .07);
     }
     bitmap.close();
@@ -28,13 +29,13 @@ export const newFacade = async (file: File): Promise<Attachment> => ({ id: `fac-
 
 /** This visit's facade photo, or the most recent one taken at the same branch (marked as older). */
 export function facadeFor(i: Inspection, all: Inspection[]): { photo: Attachment; fromVisit?: Inspection } | null {
-  if (i.facade?.data) return { photo: i.facade };
-  const prev = all.filter(x => x.id !== i.id && x.branchId === i.branchId && x.facade?.data).sort((a, b) => b.date.localeCompare(a.date))[0];
+  if (i.facade?.id) return { photo: i.facade };
+  const prev = all.filter(x => x.id !== i.id && x.branchId === i.branchId && x.facade?.id).sort((a, b) => b.date.localeCompare(a.date))[0];
   return prev?.facade ? { photo: prev.facade, fromVisit: prev } : null;
 }
 
 /** Capture/replace control. `photo` is what is shown now (may come from an earlier visit). */
-export function FacadeCapture({ photo, older, onPick, compact = false }: { photo?: string; older?: string; onPick: (a: Attachment) => void | Promise<void>; compact?: boolean }) {
+export function FacadeCapture({ photo, older, onPick, compact = false }: { photo?: Attachment; older?: string; onPick: (a: Attachment) => void | Promise<void>; compact?: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const pick = async (files: FileList | null) => {
@@ -44,7 +45,7 @@ export function FacadeCapture({ photo, older, onPick, compact = false }: { photo
   };
   const file = <input ref={input} type="file" accept="image/*" capture="environment" hidden onChange={e => pick(e.target.files)} data-testid="input-facade"/>;
   if (photo) return <div className={`facade-card has ${compact ? 'compact' : ''}`}>
-    <img src={photo} alt="واجهة الفرع"/>
+    <MediaImg att={photo} alt="واجهة الفرع"/>
     <div className="facade-meta"><b><Store size={15}/> واجهة الفرع</b>{older ? <small>من زيارة {older} — صوّر صورة جديدة</small> : <small>تظهر في بداية التقرير والعرض</small>}</div>
     <button type="button" className="facade-btn" onClick={() => input.current?.click()} disabled={busy}><RefreshCw size={15}/>{busy ? 'جارٍ الحفظ…' : older ? 'صورة جديدة' : 'تغيير'}</button>{file}
   </div>;

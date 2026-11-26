@@ -138,6 +138,11 @@ export const monthlyFileName = (ym: string) => `Ratio-monthly-${ym}.pptx`;
 /** Browser entry: builds the deck with the brand logo and returns a downloadable blob. */
 export async function exportMonthlyReport(d: D, ym: string): Promise<{ blob: Blob; name: string }> {
   const { toDataUrl } = await import('./exports');
-  const deck = await buildMonthlyDeck(d, ym, await toDataUrl('/brand/logo-ar-white.png'));
+  const { getMedia } = await import('../data');
+  // facades are stored apart from the visit records: load them (latest per branch only)
+  const latest = new Map<string, Inspection>();
+  for (const i of d.inspections) if (i.facade?.id) { const c = latest.get(i.branchId); if (!c || i.date > c.date) latest.set(i.branchId, i); }
+  const withFacades = await Promise.all(d.inspections.map(async i => latest.get(i.branchId) === i && i.facade ? { ...i, facade: { ...i.facade, data: await getMedia(i.facade).catch(() => '') } } : i));
+  const deck = await buildMonthlyDeck({ ...d, inspections: withFacades }, ym, await toDataUrl('/brand/logo-ar-white.png'));
   return { blob: await deck.write({ outputType: 'blob' }) as Blob, name: monthlyFileName(ym) };
 }

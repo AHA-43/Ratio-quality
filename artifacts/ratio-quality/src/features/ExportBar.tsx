@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import type { ActionItem, Inspection } from '../data';
+import { hydrate, type ActionItem, type Inspection } from '../data';
 import { useEffect } from 'react';
 import { audit, listMail, logMail, useConfig, type MailEntry } from '../session';
 import { deliver, fileBase, exportPptx, exportXlsx, mailtoLink, MAIL_TEMPLATES, renderTemplate, suggestTemplate } from './exports';
-import { exportTemplatePptx } from './template-pptx';
-import { renderBranchCard } from './branch-card';
 
-export function ExportBar({ inspection, actions }: { inspection: Inspection; actions: ActionItem[] }) {
+export function ExportBar({ inspection: base, actions }: { inspection: Inspection; actions: ActionItem[] }) {
+  const inspection = base;
   const [busy, setBusy] = useState('');
   const [err, setErr] = useState('');
   const cfg = useConfig();
@@ -21,7 +20,8 @@ export function ExportBar({ inspection, actions }: { inspection: Inspection; act
   const run = async (kind: 'xlsx' | 'pptx' | 'tpl' | 'card' | 'pdf', share: boolean) => {
     setBusy(kind); setErr('');
     try {
-      const out = kind === 'pdf' ? await (async () => { const el = document.querySelector<HTMLElement>('.print-report'); if (!el) throw new Error('no report'); const { elementToPdf } = await import('./pdf-export'); return { blob: await elementToPdf(el, { wrapperClass: `page-content report-page ${inspection.imported ? 'is-imported' : ''}`, footer: `ريشيو · تقرير زيارة الجودة · ${inspection.branchName} · ${inspection.date.slice(0, 10)}` }), name: `${fileBase(inspection)}.pdf` }; })() : kind === 'card' ? { blob: await renderBranchCard(inspection), name: `Ratio-card-${inspection.branchCode || 'BRANCH'}-${inspection.date.slice(0, 10)}.png` } : kind === 'xlsx' ? await exportXlsx(inspection, actions) : kind === 'tpl' ? await exportTemplatePptx(inspection, actions) : await exportPptx(inspection, actions);
+      const inspection = kind === 'pdf' || kind === 'card' ? base : await hydrate(base); // photos are stored apart; load them for the file
+      const out = kind === 'pdf' ? await (async () => { const el = document.querySelector<HTMLElement>('.print-report'); if (!el) throw new Error('no report'); const { elementToPdf } = await import('./pdf-export'); return { blob: await elementToPdf(el, { wrapperClass: `page-content report-page ${inspection.imported ? 'is-imported' : ''}`, footer: `ريشيو · تقرير زيارة الجودة · ${inspection.branchName} · ${inspection.date.slice(0, 10)}` }), name: `${fileBase(inspection)}.pdf` }; })() : kind === 'card' ? { blob: await (await import('./branch-card')).renderBranchCard(inspection), name: `Ratio-card-${inspection.branchCode || 'BRANCH'}-${inspection.date.slice(0, 10)}.png` } : kind === 'xlsx' ? await exportXlsx(inspection, actions) : kind === 'tpl' ? await (await import('./template-pptx')).exportTemplatePptx(inspection, actions) : await exportPptx(inspection, actions);
       await deliver(out.blob, out.name, share);
       logMail({ inspectionId: inspection.id, channel: share ? 'share' : 'download', file: out.name });
       audit(`report.export.${kind}`, 'inspections', inspection.id, { share });

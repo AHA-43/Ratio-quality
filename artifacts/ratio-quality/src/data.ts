@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
 import extraBranches from './branches.extra.json'; // branches added by hand (survive a re-import of the workbook)
-import { ConflictError, DEVICE_ID, cloudEnabled, fillPhotos, isSignedIn, pushDoc, pullAll, removeDoc, watchStore } from './cloud';
+import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc, resolvePhoto, watchStore } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
@@ -87,19 +87,83 @@ class RatioDatabase extends Dexie {
       settings: 'id',
     });
     this.version(2).stores({ equipment: 'id, branchId', baristas: 'id, branchId', baristaEvals: 'id, baristaId, inspectionId' });
+    // v3: photos/videos live in their own table, so lists of visits stay small in memory.
+    this.version(3).stores({ media: 'id' }).upgrade(async tx => {
+      const all = await tx.table('inspections').toArray() as Inspection[];
+      for (const i of all) {
+        const blobs = attsOf(i).filter(a => a.data?.startsWith('data:'));
+        if (!blobs.length) continue;
+        await tx.table('media').bulkPut(blobs.map(a => ({ id: a.id, data: a.data })));
+        await tx.table('inspections').put(lighten(i));
+      }
+    });
   }
 }
 
 const db = new RatioDatabase();
+
+/* ---------- media: images/videos stored apart from the visit records ---------- */
+type MediaRow = { id: string; data: string };
+const mediaTable = () => db.table<MediaRow, string>('media');
+function attsOf(i: Inspection): Attachment[] {
+  const out: Attachment[] = [];
+  for (const a of Object.values(i.answers ?? {})) out.push(...(a?.attachments ?? []));
+  if (i.facade) out.push(i.facade);
+  return out;
+}
+/** Same visit with every attachment's data removed (structure copied, untouched otherwise). */
+function lighten(i: Inspection): Inspection {
+  const strip = (x: Attachment) => x.data ? { ...x, data: '' } : x;
+  return { ...i, answers: Object.fromEntries(Object.entries(i.answers ?? {}).map(([k, a]) => [k, a ? { ...a, attachments: (a.attachments ?? []).map(strip) } : a])) as Inspection['answers'], ...(i.facade ? { facade: strip(i.facade) } : {}) };
+}
+const memo = new Map<string, string>(); // small in-memory cache of recently used media
+const remember = (id: string, data: string) => { memo.delete(id); memo.set(id, data); while (memo.size > 40) memo.delete(memo.keys().next().value!); };
+/** Writes new/changed media and returns the light record to store. */
+async function splitMedia(i: Inspection): Promise<Inspection> {
+  const blobs = attsOf(i).filter(a => a.data?.startsWith('data:') && memo.get(a.id) !== a.data);
+  if (blobs.length) { await mediaTable().bulkPut(blobs.map(a => ({ id: a.id, data: a.data }))); blobs.forEach(a => remember(a.id, a.data)); }
+  return lighten(i);
+}
+/** Media for one attachment: memory, then this device, then the cloud (and kept on the device). */
+export async function getMedia(a: Pick<Attachment, 'id' | 'data' | 'storagePath'>): Promise<string> {
+  if (a.data) return a.data;
+  const m = memo.get(a.id); if (m) return m;
+  const row = await mediaTable().get(a.id).catch(() => undefined);
+  if (row?.data) { remember(a.id, row.data); return row.data; }
+  if (a.storagePath && cloudEnabled && isSignedIn()) {
+    const d = await resolvePhoto(a.storagePath).catch(() => '');
+    if (d) { await mediaTable().put({ id: a.id, data: d }).catch(() => {}); remember(a.id, d); }
+    return d;
+  }
+  return '';
+}
+/** Full copy of a visit with media filled in (for exports, backups and uploads). onlyUnsent: only media not yet in the cloud. */
+export async function hydrate(i: Inspection, onlyUnsent = false): Promise<Inspection> {
+  const need = attsOf(i).filter(a => !a.data && (!onlyUnsent || !a.storagePath || a.storagePath === 'pending'));
+  if (!need.length) return i;
+  const found = new Map<string, string>();
+  const rows = await mediaTable().bulkGet(need.map(a => a.id)).catch(() => [] as (MediaRow | undefined)[]);
+  rows.forEach(r => { if (r?.data) found.set(r.id, r.data); });
+  if (!onlyUnsent) for (const a of need) if (!found.has(a.id) && a.storagePath) { const d = await getMedia(a); if (d) found.set(a.id, d); }
+  const fill = (x: Attachment) => !x.data && found.has(x.id) ? { ...x, data: found.get(x.id)! } : x;
+  return { ...i, answers: Object.fromEntries(Object.entries(i.answers ?? {}).map(([k, a]) => [k, a ? { ...a, attachments: (a.attachments ?? []).map(fill) } : a])) as Inspection['answers'], ...(i.facade ? { facade: fill(i.facade) } : {}) };
+}
+export async function mediaStats(): Promise<{ bytes: number; images: number }> {
+  let bytes = 0, images = 0;
+  await mediaTable().each(r => { bytes += r.data.length; if (r.data.startsWith('data:image/')) images++; }).catch(() => {});
+  return { bytes, images };
+}
 
 class DexieInspectionRepository implements InspectionRepository {
   async list<T>(store: StoreName): Promise<T[]> {
     return (await db.table(store).toArray()) as T[];
   }
   async put<T extends { id: string }>(store: StoreName, value: T) {
-    await db.table(store).put(value as never);
+    const v = store === 'inspections' ? await splitMedia(value as unknown as Inspection) : value;
+    await db.table(store).put(v as never);
   }
   async remove(store: StoreName, id: string) {
+    if (store === 'inspections') { const i = await db.table(store).get(id) as Inspection | undefined; if (i) await mediaTable().bulkDelete(attsOf(i).map(a => a.id)).catch(() => {}); }
     await db.table(store).delete(id);
   }
   async loadQuestions(): Promise<Question[]> {
@@ -141,7 +205,8 @@ function schedulePush(store: StoreName, value: { id: string }) {
     while (pending.has(key)) {
       const job = pending.get(key)!; pending.delete(key);
       try {
-        const uploaded = await pushDoc(job.store, job.value as never, readSynced()[job.value.id]);
+        const outgoing = job.store === 'inspections' ? await hydrate(job.value as unknown as Inspection, true) : job.value;
+        const uploaded = await pushDoc(job.store, outgoing as never, readSynced()[job.value.id]);
         markSynced(job.value.id, (job.value as { updatedAt?: string }).updatedAt); emitChange('pushed');
         if (job.store === 'inspections' && Object.keys(uploaded).length) {
           // remember photo references locally (keep the local image data too)
@@ -175,6 +240,14 @@ function keepLocalMedia(local: Inspection, cloud: Inspection) {
   }
   if (cloud.facade && !cloud.facade.data && local.facade?.id === cloud.facade.id) cloud.facade.data = local.facade.data;
 }
+/** Downloads (a few at a time) only the photos this device does not already hold. */
+async function fetchMissingMedia(i: Inspection) {
+  const todo = attsOf(i).filter(a => !a.data && a.storagePath && a.storagePath !== 'device-only' && a.storagePath !== 'pending');
+  if (!todo.length) return;
+  const have = new Set((await mediaTable().bulkGet(todo.map(a => a.id))).filter(Boolean).map(r => r!.id));
+  const missing = todo.filter(a => !have.has(a.id));
+  for (let k = 0; k < missing.length; k += 6) await Promise.all(missing.slice(k, k + 6).map(async a => { const d = await resolvePhoto(a.storagePath!).catch(() => ''); if (d) await mediaTable().put({ id: a.id, data: d }); }));
+}
 const SYNC_STORES = ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const;
 type Rec = { id: string; updatedAt?: string };
 /** Brings cloud records that are new or newer into the device store. Returns how many were written. */
@@ -201,7 +274,7 @@ async function applyCloudNow(store: StoreName, cloud: Rec[]): Promise<number> {
     }
     if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
       const copy = JSON.parse(JSON.stringify(c)) as Rec;
-      if (store === 'inspections') { if (l) keepLocalMedia(l as unknown as Inspection, copy as unknown as Inspection); await fillPhotos(copy as never).catch(() => {}); }
+      if (store === 'inspections') { if (l) keepLocalMedia(l as unknown as Inspection, copy as unknown as Inspection); await fetchMissingMedia(copy as unknown as Inspection).catch(() => {}); }
       delete (copy as { _writer?: string })._writer;
       markSynced(c.id, c.updatedAt);
       await localRepository.put(store, copy as never);
@@ -233,7 +306,7 @@ async function runSync() {
       const c = cloudById.get(l.id);
       if ((l as { training?: boolean }).training) continue; // practice visits stay on the device
       if (getConflict(l.id)) continue;
-      if (!c || (c.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
+      if (!c || (c.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, (store === 'inspections' ? await hydrate(l as unknown as Inspection, true) : l) as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
     }
     emitChange('pushed');
   }
