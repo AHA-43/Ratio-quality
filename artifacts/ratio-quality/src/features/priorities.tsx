@@ -4,6 +4,7 @@ import { ArrowLeft, CalendarCheck, Flame, MapPin, TrendingDown, TrendingUp } fro
 import type { ActionItem, Branch, Inspection } from '../data';
 import { branchPos, cityOf, distanceKm, fmtKm } from './geo';
 import { focusInsights, planWeek, type Geo } from './insights';
+import { themesOf } from './themes';
 
 type D = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] };
 const geo: Geo = { pos: b => branchPos(b.id, b.name), city: cityOf, dist: distanceKm };
@@ -18,6 +19,8 @@ export function PrioritiesPage({ data }: { data: D }) {
   const focus = useMemo(() => focusInsights(data), [data.inspections, data.branches, data.actions]);
   const plan = useMemo(() => planWeek(data, { perDay, days: 5, geo }), [data.inspections, data.branches, data.actions, perDay]);
   const staleN = focus.stale.length + focus.never;
+  const themes = useMemo(() => { const now = Date.now(); return themesOf(data.inspections.filter(i => i.status === 'finalized' && !i.training && now - Date.parse(i.date.replace(' ', 'T')) <= focus.windowDays * 86400000)); }, [data.inspections, focus.windowDays]);
+  const maxTheme = Math.max(1, ...themes.map(t => t.count));
   return <div className="page-content pr-page">
     <div className="page-title"><div><span className="eyebrow">ماذا نفعل الآن؟</span><h1>الأولويات</h1><p>أين المشكلة الفعلية، وأي الفروع نزورها أولاً هذا الأسبوع.</p></div></div>
     <div className="pr-kpis">
@@ -40,6 +43,13 @@ export function PrioritiesPage({ data }: { data: D }) {
             {f.delta !== null && Math.abs(f.delta) >= 0.05 && <span className={`pr-trend ${f.delta > 0 ? 'worse' : 'better'}`}>{f.delta > 0 ? <TrendingUp size={14}/> : <TrendingDown size={14}/>}{f.delta > 0 ? 'يزداد' : 'يتحسن'}</span>}
           </li>)}</ol>}
       </section>
+      {themes.length > 0 && <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">كل التقارير، بما فيها السابقة</span><h2>المواضيع الأكثر تكراراً</h2></div></div>
+        <ul className="pr-themes">{themes.slice(0, 8).map(t => <li key={t.name}>
+          <div className="th-top"><b>{t.name}</b><span className="th-n">{t.count}<small> ملاحظة</small></span></div>
+          <div className="pr-bar"><i style={{ width: `${Math.max(4, t.count / maxTheme * 100)}%` }} className={t.critical ? 'crit' : ''}/></div>
+          <small>{t.critical ? <em className="th-crit">{t.critical} حرجة</em> : null}في {t.reports} تقرير{t.branches.length ? ` · أبرزها: ${t.branches.join('، ')}` : ''}</small>
+        </li>)}</ul>
+      </section>}
       <div className="pr-two">
         <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">مقارنة بآخر زيارتين</span><h2>فروع تتراجع</h2></div></div>
           {focus.declining.length ? <ul className="pr-list">{focus.declining.map(t => <li key={t.branch.id}><Link href={`/branches/${t.branch.id}`} className="pr-row"><b>{t.branch.name}</b><span className="pr-delta down">{t.prev}% ← {t.last}%<em>{t.delta}</em></span></Link></li>)}</ul> : <p className="pr-empty">لا توجد فروع متراجعة بشكل ملحوظ.</p>}

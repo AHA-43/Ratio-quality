@@ -17,6 +17,8 @@ import { TASTING_SCORE_IDS } from './checklist';
 import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
 import { FacadeCapture, facadeFor } from './features/facade';
+import { ApprovalAlert } from './features/approval-alert';
+import { CloudUsageCard } from './features/cloud-usage';
 import { appVersion, buildDiagnostics, clearErrors, getErrors } from './errorlog';
 import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
 import { useMyPosition, type BranchScore } from './features/position';
@@ -861,6 +863,7 @@ function SettingsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
     <div className="settings-aside"><Card className="settings-card"><div className="card-heading"><div><span className="eyebrow">التخزين</span><h2>بيانات هذا الجهاز</h2></div><ShieldCheck size={20}/></div><div className="local-callout"><span className="local-status-icon"><ShieldCheck size={20}/></span><div><b>{cloudEnabled ? 'متزامنة وآمنة' : 'محفوظة محلياً فقط'}</b><p>{cloudEnabled ? 'تُحفظ البيانات على الجهاز أولاً ثم تُزامن مع حسابك عند توفر الإنترنت، وتؤخذ منها نسخة احتياطية مشفرة.' : 'لا تُرسل بياناتك إلى خادم ولا تتم مزامنتها مع أجهزة أخرى.'}</p></div></div><Button variant="outline" className="full-button" onClick={exportBackup} data-testid="button-export-backup"><ArrowDownToLine size={17}/> تصدير نسخة JSON</Button><label className="button button-outline full-button import-button"><Upload size={17}/> استيراد نسخة JSON<input type="file" accept="application/json,.json" onChange={e => { importBackup(e.target.files?.[0]); e.currentTarget.value = ''; }} data-testid="input-import-backup"/></label>{savedNote && <p className="backup-note" data-testid="backup-status">{savedNote}</p>}<div className="backup-count">{data.inspections.length} زيارة · {data.actions.length} إجراء · {data.branches.length} فرع</div></Card>
       <Card className="settings-card"><div className="card-heading"><div><span className="eyebrow">التثبيت</span><h2>إضافة للشاشة الرئيسية</h2></div><Activity size={19}/></div><ol className="install-steps"><li><span>١</span>افتح هذه الصفحة في Safari على iPhone.</li><li><span>٢</span>اضغط زر المشاركة في أسفل الشاشة.</li><li><span>٣</span>اختر «إضافة إلى الشاشة الرئيسية» ثم «إضافة».</li></ol><div className="video-unsupported">الفيديو (حتى 30 ميجا) يُحفظ على هذا الجهاز ولا يُرفع للسحابة.</div></Card></div></div>
     <LegacyImportCard onDone={data.refresh}/>
+    {cloudEnabled && <CloudUsageCard inspections={data.inspections}/>}
     <AccountCard/>
     <DiagnosticsCard/>
     <div className="settings-footnote"><Info size={15}/> المعايير والحدود المعروضة ليست معايير رسمية معتمدة؛ راجع واعتمد القيم داخلياً قبل التطبيق.</div>
@@ -869,7 +872,7 @@ function SettingsPage({ data }: { data: ReturnType<typeof useLocalData> }) {
 
 function Router() {
   const data = useLocalData();
-  return <RoutedErrorBoundary><AppShell><SearchPalette data={data} pages={[...nav, ...moreNav]}/><Suspense fallback={<div className="page-content route-loading" aria-busy="true"><span className="rl-bar"/><div className="skeleton-list"><i/><i/><i/></div></div>}><Switch>
+  return <RoutedErrorBoundary><AppShell><SearchPalette data={data} pages={[...nav, ...moreNav]}/><ApprovalAlert inspections={data.inspections}/><Suspense fallback={<div className="page-content route-loading" aria-busy="true"><span className="rl-bar"/><div className="skeleton-list"><i/><i/><i/></div></div>}><Switch>
     <Route path="/"><HomePage data={data}/></Route>
     <Route path="/visits"><VisitsPage data={data}/></Route>
     <Route path="/actions"><ActionsBoard data={data}/></Route>
