@@ -28,21 +28,30 @@ export async function buildVisitDeck(i: Inspection, actions: ActionItem[], asset
   });
   const img = assets.image ?? (async (x: string) => x.startsWith('data:') ? x : null);
 
-  /* 1 ─ cover */
+  /* 1 ─ cover: with the branch's facade photo when there is one */
   const cv = p.addSlide(); cv.background = { color: C.navy };
-  cv.addShape(p.ShapeType.ellipse, { x: -2.2, y: 1.4, w: 6.4, h: 6.4, fill: { color: C.navy2 }, line: { color: C.navy2, width: 0 } });
-  mark(p, cv, -0.2, 1.75, 3.7, C.corn, 55);
+  const facade = i.facade?.data ? await img(i.facade.data).catch(() => null) : null;
+  const tx = facade ? 5.75 : 3.6, tw = 9.4 - tx; // text column (right side)
+  if (facade) {
+    cv.addImage({ data: facade, x: 0, y: 0, w: 5.35, h: H, sizing: { type: 'cover', w: 5.35, h: H } });
+    cv.addShape(p.ShapeType.rect, { x: 0, y: H - 0.62, w: 5.35, h: 0.62, fill: { color: C.navy, transparency: 22 }, line: { color: C.navy, width: 0 } });
+    T(cv, `واجهة الفرع${i.branchCode ? `  ·  ${i.branchCode}` : ''}`, { x: 0.3, y: H - 0.5, w: 4.75, h: 0.38, fontSize: 11, bold: true, color: C.white, valign: 'middle' });
+    cv.addShape(p.ShapeType.rect, { x: 5.35, y: 0, w: 0.06, h: H, fill: { color: C.corn }, line: { color: C.corn, width: 0 } });
+  } else {
+    cv.addShape(p.ShapeType.ellipse, { x: -2.2, y: 1.4, w: 6.4, h: 6.4, fill: { color: C.navy2 }, line: { color: C.navy2, width: 0 } });
+    mark(p, cv, -0.2, 1.75, 3.7, C.corn, 55);
+  }
   if (assets.logoWhite) cv.addImage({ data: assets.logoWhite, x: 7.35, y: 0.5, w: 2.05, h: 0.63 });
-  eyebrow(cv, 'تقرير زيارة الجودة', 4.0, 1.55, 5.4);
-  T(cv, i.branchName, { x: 3.6, y: 1.9, w: 5.8, h: 1.25, fontSize: i.branchName.length > 22 ? 32 : 40, bold: true, color: C.white, valign: 'middle', fit: 'shrink' });
-  T(cv, [i.type, date, i.shift].filter(Boolean).join('  ·  '), { x: 3.6, y: 3.15, w: 5.8, h: 0.35, fontSize: 14, color: C.onNavy });
-  T(cv, `المفتش: ${i.inspector}${i.branchCode ? `   ·   ${i.branchCode}` : ''}`, { x: 3.6, y: 3.5, w: 5.8, h: 0.3, fontSize: 11.5, color: C.faint });
+  eyebrow(cv, 'تقرير زيارة الجودة', tx, 1.55, tw);
+  T(cv, i.branchName, { x: tx, y: 1.9, w: tw, h: 1.25, fontSize: facade ? (i.branchName.length > 18 ? 26 : 32) : i.branchName.length > 22 ? 32 : 40, bold: true, color: C.white, valign: 'middle', fit: 'shrink' });
+  T(cv, [i.type, date, i.shift].filter(Boolean).join('  ·  '), { x: tx, y: 3.15, w: tw, h: 0.35, fontSize: facade ? 12.5 : 14, color: C.onNavy });
+  T(cv, `المفتش: ${i.inspector}${!facade && i.branchCode ? `   ·   ${i.branchCode}` : ''}`, { x: tx, y: 3.5, w: tw, h: 0.3, fontSize: 11.5, color: C.faint });
   // score badge
   cv.addShape(p.ShapeType.roundRect, { x: 6.55, y: 4.0, w: 2.85, h: 0.95, fill: { color: C.white, transparency: 90 }, line: { color: C.white, width: 0.75, transparency: 70 }, rectRadius: 0.16 });
   T(cv, s.score === null ? '—' : `${s.score}%`, { x: 7.75, y: 4.06, w: 1.55, h: 0.6, fontSize: 28, bold: true, color: C.white, valign: 'middle' });
   T(cv, 'النتيجة', { x: 7.75, y: 4.6, w: 1.55, h: 0.25, fontSize: 9.5, color: C.onNavy });
   chip(p, cv, 7.65, 4.33, cls || '—', C.white, tone.color, 11);
-  T(cv, `${i.number ?? ''}${i.workflow ? `   ·   ${i.workflow === 'approved' ? 'معتمد' : i.workflow === 'submitted' ? 'بانتظار الاعتماد' : 'أُعيد للتصحيح'}` : ''}`, { x: 3.6, y: 5.05, w: 5.8, h: 0.25, fontSize: 9, color: C.faint });
+  T(cv, `${i.number ?? ''}${i.workflow ? `   ·   ${i.workflow === 'approved' ? 'معتمد' : i.workflow === 'submitted' ? 'بانتظار الاعتماد' : 'أُعيد للتصحيح'}` : ''}`, { x: tx, y: 5.05, w: tw, h: 0.25, fontSize: 9, color: C.faint });
 
   /* 2 ─ summary */
   const sm = contentSlide(p, 'الخلاصة', 'نتيجة الزيارة في لمحة', foot);

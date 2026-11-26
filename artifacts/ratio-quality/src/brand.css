@@ -871,3 +871,22 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 @media (max-width: 767px), (pointer: coarse) { .print-only-desktop { display: none !important; } }
 /* street map: OpenStreetMap tiles toned down to the brand's quiet palette */
 .leaflet-tile.osm-tiles, .osm-tiles { filter: grayscale(0.85) sepia(0.12) brightness(1.04) contrast(0.92); }
+
+/* ---- branch facade photo (visit start, report hero, deck cover) ---- */
+.facade-card { width: 100%; display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; border: 1.5px dashed #b9bff5; background: var(--corn-soft); color: var(--navy); text-align: right; font: inherit; cursor: pointer; transition: transform .18s var(--ease-spring), background .2s; }
+.facade-card.empty:active { transform: scale(.98); }
+.facade-card .facade-ico { flex: none; width: 44px; height: 44px; border-radius: 13px; display: grid; place-items: center; background: var(--navy); color: #fff; }
+.facade-card b { display: block; font-size: 15px; }
+.facade-card small { display: block; color: #5b5f93; font-size: 12.5px; margin-top: 2px; }
+.facade-card.compact { margin: 12px 0 4px; }
+.facade-card.has { border-style: solid; border-color: var(--milk-line); background: #fff; cursor: default; padding: 8px; }
+.facade-card.has img { width: 84px; height: 64px; object-fit: cover; border-radius: 11px; flex: none; }
+.facade-card .facade-meta { flex: 1; min-width: 0; }
+.facade-card .facade-meta b { display: flex; align-items: center; gap: 6px; }
+.facade-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border-radius: 11px; border: 1px solid var(--milk-line); background: var(--milk-soft); color: var(--navy); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+.report-facade { position: relative; margin: 0 0 -18px; border-radius: 22px 22px 0 0; overflow: hidden; aspect-ratio: 16 / 7; background: var(--navy); }
+.report-facade img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.report-facade::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top, #07014fcc, transparent 55%); }
+.report-facade figcaption { position: absolute; z-index: 1; bottom: 30px; right: 20px; left: 20px; color: #fff; font-weight: 800; font-size: 15px; text-shadow: 0 1px 8px #0007; }
+@media (max-width: 640px) { .report-facade { aspect-ratio: 4 / 3; border-radius: 18px 18px 0 0; } }
+@media print { .report-facade { aspect-ratio: 16 / 6; break-inside: avoid; } }

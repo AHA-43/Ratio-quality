@@ -16,6 +16,7 @@ import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
 import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
 import { ExportBar, MailHistory } from './features/ExportBar';
+import { FacadeCapture, facadeFor } from './features/facade';
 import { appVersion, buildDiagnostics, clearErrors, getErrors } from './errorlog';
 import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
 import { useMyPosition, type BranchScore } from './features/position';
@@ -50,7 +51,7 @@ const BaristasPage = lazyRetry(() => import('./features/pages').then(m => ({ def
 const EquipmentPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.EquipmentPage })));
 const UsersPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.UsersPage })));
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, pendingUploadIds, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Attachment, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, onDataChange, pendingUploadIds, startLiveSync, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -123,8 +124,10 @@ function usePendingCount() {
     if (!cloudEnabled) return;
     let on = true;
     const run = () => list<Inspection>('inspections').then(l => { if (on) setN(pendingUploadIds(l).length); }).catch(() => {});
-    run(); const t = window.setInterval(run, 4000);
-    return () => { on = false; window.clearInterval(t); };
+    // Event-driven (reading every visit with its photos every few seconds made phones sluggish).
+    run(); const t = window.setInterval(run, 20000); const off = onDataChange(run);
+    const h = window.setTimeout(run, 1500);
+    return () => { on = false; window.clearInterval(t); window.clearTimeout(h); off(); };
   }, []);
   return n;
 }
@@ -134,6 +137,15 @@ function AppShell({ children }: { children: ReactNode }) {
   const pendingUploads = usePendingCount();
   useReveal();
   useEffect(() => { if (online && cloudEnabled) syncAll().catch(() => {}); }, [online]);
+  // Live: other users' visits/actions arrive as they are saved; plus a catch-up sync whenever the app comes back to the foreground.
+  useEffect(() => {
+    if (!cloudEnabled) return;
+    const stop = startLiveSync();
+    let last = Date.now();
+    const wake = () => { if (document.visibilityState === 'visible' && navigator.onLine && Date.now() - last > 15000) { last = Date.now(); syncAll().catch(() => {}); } };
+    document.addEventListener('visibilitychange', wake); window.addEventListener('focus', wake);
+    return () => { stop(); document.removeEventListener('visibilitychange', wake); window.removeEventListener('focus', wake); };
+  }, []);
   useEffect(() => {
     requestPersistence();
     // Warm the lazy screens while online so they also open without a connection inside branches.
@@ -234,6 +246,8 @@ function useLocalData() {
     } finally { setReady(true); }
   };
   useEffect(() => { initializeBranches().then(refresh).catch(() => { setError('تعذر تهيئة التخزين المحلي.'); setReady(true); }); }, []);
+  // Re-read when records arrive from the cloud (another inspector's visit, an approval), debounced.
+  useEffect(() => { let t = 0; const off = onDataChange(k => { if (k !== 'cloud') return; window.clearTimeout(t); t = window.setTimeout(() => { refresh(); }, 250); }); return () => { off(); window.clearTimeout(t); }; }, []);
   return { inspections, training, branches, actions, ready, error, refresh };
 }
 
@@ -389,13 +403,17 @@ function CelebrationGate({ inspection, count }: { inspection: Inspection; count:
 function ReportDetail({ data }: { data: ReturnType<typeof useLocalData> }) {
   const [, setLocation] = useLocation();
   const [match, params] = useRoute('/reports/:id');
+  const me = useProfile();
   const inspection = match ? data.inspections.find(i => i.id === params?.id) : undefined;
   if (!inspection) return <div className="page-content"><Link href="/reports" className="text-link"><ArrowRight size={15}/> عودة للتقارير</Link><EmptyState title="التقرير غير موجود" text="قد تكون البيانات قد حذفت من هذا الجهاز."/></div>;
   const score = calculateScore(inspection.questionSnapshot, inspection.answers);
   const findings = inspection.questionSnapshot.filter(q => inspection.answers[q.id]?.value === 'fail' || inspection.answers[q.id]?.initialValue === 'fail');
   const sections = [...new Set(inspection.questionSnapshot.map(q => q.section))];
-  return <div className={`page-content report-page ${inspection.imported ? 'is-imported' : ''}`}><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><ExportBar inspection={inspection} actions={data.actions.filter(x => x.inspectionId === inspection.id)}/><Link href={`/inspection/${inspection.id}/baristas`} className="button button-outline">تقييم الباريستا</Link></div><article className="print-report">
-    <CelebrationGate inspection={inspection} count={data.inspections.filter(x => x.status === 'finalized' && (inspection.inspectorUid ? x.inspectorUid === inspection.inspectorUid : x.inspector === inspection.inspector)).length}/><div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div><header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
+  const fac = facadeFor(inspection, data.inspections);
+  const canAddFacade = inspection.workflow !== 'approved' && (inspection.status === 'draft' || canApprove(me));
+  const withFacade = fac ? { ...inspection, facade: fac.photo } : inspection;
+  return <div className={`page-content report-page ${inspection.imported ? 'is-imported' : ''}`}><div className="report-actions no-print"><Link href="/reports" className="button button-outline"><ArrowRight size={16}/> عودة</Link><ExportBar inspection={withFacade} actions={data.actions.filter(x => x.inspectionId === inspection.id)}/><Link href={`/inspection/${inspection.id}/baristas`} className="button button-outline">تقييم الباريستا</Link></div><article className="print-report">
+    <CelebrationGate inspection={inspection} count={data.inspections.filter(x => x.status === 'finalized' && (inspection.inspectorUid ? x.inspectorUid === inspection.inspectorUid : x.inspector === inspection.inspector)).length}/><div className="no-print"><ApprovalPanel inspection={inspection} all={data.inspections} save={async next => { await put('inspections', next); await data.refresh(); }} onAmend={async copy => { await put('inspections', copy); await data.refresh(); setLocation(`/inspection/${copy.id}`); }}/><MailHistory inspectionId={inspection.id}/></div>{canAddFacade && (!fac || fac.fromVisit) && <div className="no-print"><FacadeCapture photo={fac?.photo.data} older={fac?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...inspection, facade, updatedAt: stamp() }); await data.refresh(); }}/></div>}{fac && <figure className="report-facade"><img src={fac.photo.data} alt={`واجهة ${inspection.branchName}`}/><figcaption>{inspection.branchName}{fac.fromVisit ? ` · صورة من زيارة ${fac.fromVisit.date.slice(0, 10)}` : ''}</figcaption></figure>}<header className="print-cover"><div className="report-brand"><img src="/brand/logo-ar-white.png" alt="ريشيو" style={{ height: 38 }}/></div>{inspection.workflow !== 'approved' && <span className="draft-stamp">نسخة غير معتمدة</span>}<span className="report-label">تقرير زيارة جودة</span><h1>{inspection.branchName}</h1><p>{inspection.type} · {inspection.date}</p><div className="report-meta-grid"><span>المفتش <b>{inspection.inspector}</b></span><span>الفترة <b>{inspection.shift}</b></span><span>عدد الموظفين <b>{inspection.employees}</b></span><span>رقم الزيارة <b>{inspection.number ?? inspection.id.slice(-8).toUpperCase()}</b></span><span>رمز الفرع <b>{inspection.branchCode ?? '—'}</b></span><span>الحالة <b>{workflowLabel(inspection)}</b></span></div></header>
     {inspection.imported && <LegacyBanner inspection={inspection} findings={findings.length}/>}
     <div className={`report-score cls-${score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : 'good'}`}><div><small>النتيجة الإجمالية</small><strong><CountUp to={score.score} suffix="%"/></strong><em className="cls-badge">{score.classification}</em><span>{score.classification} · {score.criticalFailures ? 'تجاوز حرج يغيّر التصنيف' : 'النتيجة حسب الأوزان'}</span></div><div className="report-score-note"><b>ملخص النتائج</b><p>{inspection.questionSnapshot.length - findings.length} مطابق · {findings.length} ملاحظة · {inspection.questionSnapshot.length} سؤالاً</p><p>حرج {findings.filter(q => inspection.answers[q.id]?.severity === 'Critical').length} · رئيسي {findings.filter(q => inspection.answers[q.id]?.severity === 'Major').length} · بسيط {findings.filter(q => inspection.answers[q.id]?.severity === 'Minor').length} · متكرر {findings.filter(q => inspection.answers[q.id]?.recurring).length}</p><p>الأوزان: حرج {WEIGHTS.Critical} · رئيسي {WEIGHTS.Major} · بسيط {WEIGHTS.Minor}</p></div></div>
     <section className="exec-summary"><h2 className="report-section-title">الملخص التنفيذي</h2>
@@ -450,6 +468,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
   const branchId = form.watch('branchId');
   const type = form.watch('type');
   const [error, setError] = useState('');
+  const [facade, setFacade] = useState<Attachment | undefined>();
   useEffect(() => { form.register('branchId'); }, [form]);
   useEffect(() => { if (profile?.name && !form.getValues('inspector')) form.setValue('inspector', profile.name); }, [profile?.name]);
   const sharedCfg = useConfig();
@@ -478,7 +497,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
       }
     }
     const id = newId();
-    const insp: Inspection = { id, status: 'draft', branchId: bid, branchName: branch.name, branchCode: branch.code, inspectorUid: profile?.uid, inspectorEmail: profile?.email, startedAt: stamp(), checklistVersion: checklistVersionLabel(sharedCfg), inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), createdAt: stamp(), updatedAt: stamp() };
+    const insp: Inspection = { id, status: 'draft', branchId: bid, branchName: branch.name, branchCode: branch.code, inspectorUid: profile?.uid, inspectorEmail: profile?.email, startedAt: stamp(), checklistVersion: checklistVersionLabel(sharedCfg), inspector: values.inspector.trim(), date: values.date.replace('T', ' '), type: values.type, shift: values.shift, employees: values.employees, answers: {}, questionSnapshot: selectedQuestions.map(q => ({ ...q, measurement: q.measurement ? { ...q.measurement } : undefined, options: q.options ? [...q.options] : undefined })), ...(facade ? { facade } : {}), createdAt: stamp(), updatedAt: stamp() };
     await put('inspections', insp); await data.refresh(); setLocation(`/inspection/${id}`);
   };
   const [locating, setLocating] = useState(false);
@@ -506,6 +525,7 @@ function StartInspection({ data }: { data: ReturnType<typeof useLocalData> }) {
     <button type="button" className="quick-start" onClick={quickStart} disabled={locating} data-testid="button-quick-start"><span className="qs-ico"><MapPin size={22}/></span><span><b>{locating ? 'جارٍ تحديد موقعك…' : 'ابدأ زيارة في أقرب فرع'}</b><small>ضغطة واحدة: الفرع والتاريخ واسمك تُعبّأ تلقائياً</small></span></button>{nearNote && <div className="alert alert-info quick-note"><Info size={16}/>{nearNote}</div>}
     <Form {...form}><form className="form-card" onSubmit={form.handleSubmit(v => start(v))}><div className="form-grid">
       <div className="field wide"><span>الفرع <em>*</em></span><BranchPicker branches={activeBranches} value={branchId} scores={branchScores} onChange={id => form.setValue('branchId', id, { shouldValidate: true })}/>{form.formState.errors.branchId && <small className="form-error">{form.formState.errors.branchId.message}</small>}{branchId && <PreviousVisitCard prev={previousInspection(data.inspections, branchId)} openActions={data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === branchId || a.branchName === activeBranches.find(b => b.id === branchId)?.name)).length}/>}</div>
+      <div className="field wide"><span>صورة الفرع من الخارج</span><FacadeCapture photo={facade?.data} onPick={setFacade}/></div>
       <label className="field wide"><span>اسم المفتش <em>*</em></span><input {...form.register('inspector')} placeholder="الاسم الكامل" data-testid="input-inspector"/>{form.formState.errors.inspector && <small className="form-error">{form.formState.errors.inspector.message}</small>}</label>
       <label className="field wide"><span>نوع الزيارة</span><select {...form.register('type')} data-testid="select-inspection-type">{types.map(t => <option key={t}>{t}</option>)}</select></label>
       <label className="field"><span>تاريخ ووقت الزيارة</span><input type="datetime-local" dir="ltr" className="ltr-date" {...form.register('date')} data-testid="input-inspection-date"/></label>
@@ -546,11 +566,12 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   useEffect(() => onConflict(cid => { if (cid === id) setConflict(getConflict(id)); }), [id]);
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(t); }, [toast]);
   useEffect(() => { if (inspection?.status === 'finalized') setLocation(`/reports/${inspection.id}`); }, [inspection?.id, inspection?.status, setLocation]);
+  const inspRef = useRef(inspection); inspRef.current = inspection;
   useEffect(() => {
     if (!inspection || inspection.status !== 'draft') return;
     setSaved(false);
     const timer = window.setTimeout(async () => {
-      await put('inspections', { ...inspection, answers, signatures, updatedAt: stamp() });
+      await put('inspections', { ...(inspRef.current ?? inspection), answers, signatures, updatedAt: stamp() });
       setSaved(true); data.refresh();
     }, 450);
     return () => window.clearTimeout(timer);
@@ -695,6 +716,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
     <div className="runner-top"><Link href="/visits" className="back-link"><ArrowRight size={16}/> الزيارات</Link><Link href={`/inspection/${inspection.id}/baristas`} className="text-link">تقييم الباريستا الفردي</Link><div className="save-state"><span className={saved || isFinal ? 'saved-dot' : 'saving-dot'}/>{isFinal ? 'زيارة مكتملة' : saved ? (cloudEnabled && inspection && pendingUploadIds([inspection]).length ? '✓ محفوظ على الجهاز · بانتظار الرفع' : cloudEnabled ? '✓ محفوظ ومرفوع' : '✓ محفوظ على الجهاز') : 'جارٍ الحفظ…'}</div></div>
     <div className="runner-intro"><div><div className="eyebrow">{inspection.branchName} · {inspection.shift}</div><h1>{inspection.type}</h1><p>{inspection.inspector} <span>·</span> {inspection.date}</p></div><span className="question-counter">{answeredCount}<small> / {questions.length} مكتمل</small></span></div>
     <div className="progress-track"><span style={{ width: `${(answeredCount / questions.length) * 100}%` }}/></div>
+    {inspection.status === 'draft' && !inspection.training && !review && (() => { const f = facadeFor(inspection, data.inspections); return (!f || f.fromVisit) && <FacadeCapture compact photo={f?.photo.data} older={f?.fromVisit?.date.slice(0, 10)} onPick={async facade => { await put('inspections', { ...(inspRef.current ?? inspection), answers, signatures, facade, updatedAt: stamp() }); await data.refresh(); }}/>; })()}
     {inspection.training && !review && <div className="training-banner"><b><GraduationCap size={16}/> زيارة تدريبية</b><span>{TRAINING_HINTS[Math.min(index, TRAINING_HINTS.length - 1)]}</span><small>لن تُحفظ في التقارير أو الإحصاءات.</small></div>}
     {message && <div className="alert alert-info"><Info size={16}/>{message}<button onClick={() => setMessage('')} aria-label="إغلاق"><X size={16}/></button></div>}
     {review ? <div className="review-layout"><Card className="review-summary"><span className="eyebrow">مراجعة قبل الإنهاء</span><h2>{isFinal ? 'تم إنهاء الزيارة' : 'ملخص الزيارة'}</h2><ScoreRing score={score.score} label={score.classification || 'غير مكتمل'} tone={score.classification === 'غير مقبول' ? 'bad' : score.classification === 'يحتاج تحسين' ? 'warn' : score.classification === 'جيد' ? 'ok' : score.classification ? 'good' : 'navy'}/><p className="score-explain">{explainScore(score.score, score.classification, score.criticalFailures)}</p><div className="score-key">{score.criticalFailures ? <span className="text-red">{score.criticalFailures} إخفاق حرج — التصنيف غير مقبول</span> : 'التصنيف يعتمد على النتيجة والأوزان'}</div><div className="summary-counts"><span><i className="dot-green"/> مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'pass').length}</b></span><span><i className="dot-red"/> غير مطابق حالياً <b>{questions.filter(x => answers[x.id]?.value === 'fail').length}</b></span><span><i className="dot-muted"/> لا ينطبق <b>{questions.filter(x => answers[x.id]?.value === 'na').length}</b></span></div><div className="severity-summary"><span>حرج محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Critical').length}</b></span><span>رئيسي محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Major').length}</b></span><span>بسيط محفوظ <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.severity === 'Minor').length}</b></span><span>متكرر <b>{questions.filter(x => (answers[x.id]?.value === 'fail' || answers[x.id]?.initialValue === 'fail') && answers[x.id]?.recurring).length}</b></span></div>{!inspection.training && <SignatureSection value={signatures} onChange={setSignatures} inspectorName={inspection.inspector} disabled={isFinal}/>}{!isFinal && <Button className="full-button" disabled={!canFinalize || submitting} onClick={finalize} data-testid="button-finalize"><CheckCircle2 size={17}/> {inspection.training ? 'إنهاء التدريب' : 'إرسال للاعتماد'}</Button>}{isFinal && <Link className="button button-primary full-button" href={`/reports/${id}`}>فتح التقرير <ArrowLeft size={16}/></Link>}<Button variant="outline" className="full-button" onClick={() => setReview(false)}>{isFinal ? 'العودة للملخص' : 'العودة للفحص'}</Button>{!canFinalize && !isFinal && <p className="validation-hint">يلزم الإجابة عن جميع الأسئلة، وإضافة ملاحظة لكل إخفاق، وإكمال التوقيعات قبل الإرسال.</p>}</Card>

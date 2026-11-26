@@ -2,7 +2,7 @@
 // (VITE_FIREBASE_* env vars) users must sign in and data is mirrored to Firestore + Storage.
 import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, type User } from 'firebase/auth';
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
 const env: Record<string, string | undefined> = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
@@ -55,26 +55,32 @@ const uploadedPhotos = new Set<string>();
 async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDoc; uploaded: Record<string, string> }> {
   const uploaded: Record<string, string> = {};
   if (store !== 'inspections' || !value.answers) return { cloudCopy: value, uploaded };
+  const up = async (a: Att, qid: number): Promise<Att> => {
+    let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);
+    if (!ref && a.data?.startsWith('data:') && a.data.length < 1_000_000) {
+      try {
+        await setDoc(doc(fs!, 'photos', a.id), { inspectionId: value.id, questionId: qid, data: a.data, uid: auth!.currentUser!.uid, at: new Date().toISOString() });
+        ref = `photos/${a.id}`; uploaded[a.id] = ref; uploadedPhotos.add(a.id);
+      } catch { /* offline or denied: retried on next save */ }
+    }
+    // Never inline an image in the inspection document (1 MB document limit): it stays on the device until uploaded.
+    return { ...a, data: '', storagePath: ref ?? 'pending' };
+  };
+  const facade = value.facade?.data || value.facade?.storagePath ? await up(value.facade, 0) : value.facade;
   const answers: Record<string, any> = {};
   for (const [qid, ans] of Object.entries<any>(value.answers)) {
     const atts: Att[] = [];
     for (const a of (ans.attachments ?? []) as Att[]) {
-      let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);
       if (String(a.type ?? '').startsWith('video/')) { atts.push({ ...a, data: '', storagePath: 'device-only' }); continue; }
-      if (!ref && a.data?.startsWith('data:') && a.data.length < 1_000_000) {
-        try {
-          await setDoc(doc(fs!, 'photos', a.id), { inspectionId: value.id, questionId: Number(qid), data: a.data, uid: auth!.currentUser!.uid, at: new Date().toISOString() });
-          ref = `photos/${a.id}`; uploaded[a.id] = ref; uploadedPhotos.add(a.id);
-        } catch { /* offline or denied: photo stays on the device and is retried on next save */ }
-      }
-      atts.push({ ...a, data: ref ? '' : a.data, storagePath: ref });
+      atts.push(await up(a, Number(qid)));
     }
     answers[qid] = { ...ans, attachments: atts };
   }
-  return { cloudCopy: { ...value, answers }, uploaded };
+  return { cloudCopy: { ...value, answers, ...(facade ? { facade } : {}) }, uploaded };
 }
 
-async function resolvePhoto(path: string): Promise<string> {
+export async function resolvePhoto(path: string): Promise<string> {
+  if (!fs || !path || path === 'pending' || path === 'device-only') return '';
   if (path.startsWith('photos/')) {
     const snap = await getDoc(doc(fs!, 'photos', path.slice(7)));
     return snap.exists() ? String(snap.data().data ?? '') : '';
@@ -105,18 +111,26 @@ export async function pushDoc(store: string, value: AnyDoc, expectedUpdatedAt?: 
 export async function removeDoc(store: string, id: string) {
   if (fs && isSignedIn()) await deleteDoc(doc(fs, store, id));
 }
+/** Whole collection, WITHOUT photo data: photos are fetched only for records this device actually stores
+ *  (see fillPhotos), instead of re-downloading every image on every sync. */
 export async function pullAll(store: string): Promise<AnyDoc[]> {
   if (!fs || !isSignedIn()) return [];
   const snap = await getDocs(collection(fs, store));
-  const out: AnyDoc[] = [];
-  for (const d of snap.docs) {
-    const v = d.data() as AnyDoc;
-    if (store === 'inspections' && v.answers) {
-      for (const ans of Object.values<any>(v.answers)) {
-        for (const a of ans.attachments ?? []) if (a.storagePath && a.storagePath !== 'device-only' && !a.data) a.data = await resolvePhoto(a.storagePath).catch(() => '');
-      }
-    }
-    out.push(v);
-  }
-  return out;
+  return snap.docs.map(d => ({ ...(d.data() as AnyDoc), id: d.id }));
+}
+/** Downloads missing photo data for one record, a few at a time. */
+export async function fillPhotos(v: AnyDoc) {
+  const atts: Att[] = [];
+  if (v.facade) atts.push(v.facade);
+  for (const ans of Object.values<any>(v.answers ?? {})) for (const a of ans.attachments ?? []) atts.push(a);
+  const todo = atts.filter(a => !a.data && a.storagePath && a.storagePath !== 'device-only' && a.storagePath !== 'pending');
+  for (let k = 0; k < todo.length; k += 6) await Promise.all(todo.slice(k, k + 6).map(async a => { a.data = await resolvePhoto(a.storagePath!).catch(() => ''); }));
+}
+/** Live updates: calls back with every added/changed document of a collection (first call: all of them). */
+export function watchStore(store: string, cb: (docs: AnyDoc[]) => void, onError?: () => void): () => void {
+  if (!fs || !isSignedIn()) return () => {};
+  return onSnapshot(collection(fs, store), snap => {
+    const changed = snap.docChanges().filter(c => c.type !== 'removed' && !c.doc.metadata.hasPendingWrites).map(c => ({ ...(c.doc.data() as AnyDoc), id: c.doc.id }));
+    if (changed.length) cb(changed);
+  }, () => onError?.());
 }

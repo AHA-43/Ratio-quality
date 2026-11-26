@@ -95,6 +95,30 @@ jobs:
             fi
           done
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Apply roles from config/roles.json (and report how many visits each of those users has in the cloud)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -uo pipefail
+          [ -f config/roles.json ] || exit 0
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          IT="https://identitytoolkit.googleapis.com/v1"; FS="https://firestore.googleapis.com/v1/projects/ratio-quality/databases/(default)/documents"
+          jq -c '.[]' config/roles.json | while read -r U; do
+            EMAIL=$(jq -r .email <<<"$U"); ROLE=$(jq -r .role <<<"$U"); CA=$(jq -r '.canApprove // false' <<<"$U")
+            LID=$(curl -s -X POST "$IT/projects/ratio-quality/accounts:lookup" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$(jq -n --arg e "$EMAIL" '{email:[$e]}')" | jq -r '.users[0].localId // empty')
+            [ -n "$LID" ] || { echo "no account for user #$(echo -n "$EMAIL" | sha1sum | cut -c1-6)"; continue; }
+            BODY=$(jq -n --arg r "$ROLE" --argjson c "$CA" '{fields:{role:{stringValue:$r},canApprove:{booleanValue:$c},active:{booleanValue:true}}}')
+            curl -s -X PATCH "$FS/users/$LID?updateMask.fieldPaths=role&updateMask.fieldPaths=canApprove&updateMask.fieldPaths=active" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$BODY" | jq -r '"role set: " + .fields.role.stringValue + " canApprove=" + (.fields.canApprove.booleanValue|tostring)'
+            Q=$(jq -n --arg u "$LID" '{structuredQuery:{from:[{collectionId:"inspections"}],where:{fieldFilter:{field:{fieldPath:"inspectorUid"},op:"EQUAL",value:{stringValue:$u}}},select:{fields:[{fieldPath:"status"},{fieldPath:"workflow"}]}}}')
+            curl -s -X POST "$FS:runQuery" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$Q" \
+              | jq -r '[.[] | select(.document) | ((.document.fields.status.stringValue // "?") + "/" + (.document.fields.workflow.stringValue // "-"))] | group_by(.) | map("\(.[0]): \(length)") | "visits in cloud for this user: " + (if length == 0 then "none" else join(", ") end)'
+          done
+          TOTAL=$(curl -s -X POST "$FS:runQuery" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"structuredQuery":{"from":[{"collectionId":"inspections"}],"select":{"fields":[{"fieldPath":"status"}]}}}' | jq '[.[] | select(.document)] | length')
+          echo "visits in cloud (all users): $TOTAL"
+          rm -f "$RUNNER_TEMP/sa.json"
       - name: Provision accounts with a preset password (config/provision.json holds only salted PBKDF2 hashes)
         continue-on-error: true
         env:

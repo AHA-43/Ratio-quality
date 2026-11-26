@@ -18,8 +18,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return watchUser(user => {
       if (!user) { setState('out'); return; }
       setState('syncing');
-      // Never block the inspector offline: give sync a few seconds, then continue with local data.
-      Promise.race([loadProfile().then(() => syncAll()), new Promise(r => setTimeout(r, 8000))]).catch(() => {}).then(() => new Promise(r => setTimeout(r, Math.max(0, 2400 - (Date.now() - t0))))).finally(() => setState('in'));
+      // Open as soon as the profile is known (local data shows at once); the sync continues in the background
+      // and screens refresh by themselves when new records arrive.
+      Promise.race([loadProfile(), new Promise(r => setTimeout(r, 4000))]).catch(() => {}).then(() => { syncAll().catch(() => {}); return new Promise(r => setTimeout(r, Math.max(0, 1800 - (Date.now() - t0)))); }).finally(() => setState('in'));
     });
   }, []);
 

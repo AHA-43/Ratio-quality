@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
 import extraBranches from './branches.extra.json'; // branches added by hand (survive a re-import of the workbook)
-import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc } from './cloud';
+import { ConflictError, DEVICE_ID, cloudEnabled, fillPhotos, isSignedIn, pushDoc, pullAll, removeDoc, watchStore } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
 export type AnswerValue = 'pass' | 'fail' | 'na' | string | number | null;
@@ -30,6 +30,8 @@ export type Inspection = {
   id: string; status: 'draft' | 'finalized'; branchId: string; branchName: string; inspector: string;
   date: string; type: string; shift: string; employees: number; answers: Record<number, Answer>;
   questionSnapshot: Question[]; createdAt: string; updatedAt: string; finalizedAt?: string;
+  /** Photo of the branch from outside: opens the report and the PowerPoint cover. */
+  facade?: Attachment;
   /** Workflow: draft → submitted → approved, or returned to draft for correction. */
   workflow?: 'submitted' | 'approved' | 'returned';
   number?: string; inspectorUid?: string; inspectorEmail?: string; branchCode?: string;
@@ -123,6 +125,11 @@ const conflictListeners = new Set<(id: string) => void>();
 export const onConflict = (fn: (id: string) => void) => { conflictListeners.add(fn); return () => { conflictListeners.delete(fn); }; };
 export function saveConflict(c: Inspection) { try { localStorage.setItem(`rq-conflict-${c.id}`, JSON.stringify(c)); } catch { /* ignore */ } conflictListeners.forEach(f => f(c.id)); }
 export function clearConflict(id: string) { try { const c = JSON.parse(localStorage.getItem(`rq-conflict-${id}`) || 'null'); if (c?.updatedAt) markSynced(id, c.updatedAt); localStorage.removeItem(`rq-conflict-${id}`); } catch { /* ignore */ } }
+/* Change notifications: 'cloud' = records arrived from another device (screens re-read), 'pushed' = uploads confirmed. */
+type ChangeKind = 'cloud' | 'pushed';
+const changeListeners = new Set<(k: ChangeKind) => void>();
+export const onDataChange = (fn: (k: ChangeKind) => void) => { changeListeners.add(fn); return () => { changeListeners.delete(fn); }; };
+const emitChange = (k: ChangeKind) => changeListeners.forEach(f => { try { f(k); } catch { /* ignore */ } });
 /* Per-document push queue: one write in flight per doc; while it runs, only the newest version waits (coalesced). */
 const inflight = new Map<string, Promise<void>>();
 const pending = new Map<string, { store: StoreName; value: { id: string } }>();
@@ -135,11 +142,11 @@ function schedulePush(store: StoreName, value: { id: string }) {
       const job = pending.get(key)!; pending.delete(key);
       try {
         const uploaded = await pushDoc(job.store, job.value as never, readSynced()[job.value.id]);
-        markSynced(job.value.id, (job.value as { updatedAt?: string }).updatedAt);
+        markSynced(job.value.id, (job.value as { updatedAt?: string }).updatedAt); emitChange('pushed');
         if (job.store === 'inspections' && Object.keys(uploaded).length) {
           // remember photo references locally (keep the local image data too)
           const cur = await localRepository.list<Inspection>('inspections').then(all => all.find(x => x.id === job.value.id));
-          if (cur) { for (const ans of Object.values(cur.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id]; await localRepository.put('inspections', cur as never); }
+          if (cur) { for (const ans of Object.values(cur.answers)) for (const a of ans.attachments) if (uploaded[a.id]) a.storagePath = uploaded[a.id]; if (cur.facade && uploaded[cur.facade.id]) cur.facade.storagePath = uploaded[cur.facade.id]; await localRepository.put('inspections', cur as never); }
         }
       } catch (e) {
         if (e instanceof ConflictError) { saveConflict(e.cloud as unknown as Inspection); pending.delete(key); }
@@ -159,7 +166,6 @@ export async function remove(store: StoreName, id: string) {
   await localRepository.remove(store, id);
   if (cloudEnabled && isSignedIn()) removeDoc(store, id).catch(() => {});
 }
-/** After sign-in: bring down anything missing/newer from the cloud, then push local-only items up. */
 /** Cloud copies carry photo references, never device-only videos: keep any media this device already has. */
 function keepLocalMedia(local: Inspection, cloud: Inspection) {
   for (const [qid, ans] of Object.entries(cloud.answers ?? {})) {
@@ -167,42 +173,79 @@ function keepLocalMedia(local: Inspection, cloud: Inspection) {
     for (const a of ans.attachments ?? []) if (!a.data) { const m = mine.find(x => x.id === a.id); if (m?.data) a.data = m.data; }
     for (const m of mine) if (m.type.startsWith('video/') && !(ans.attachments ?? []).some(a => a.id === m.id)) (ans.attachments ??= []).push(m);
   }
+  if (cloud.facade && !cloud.facade.data && local.facade?.id === cloud.facade.id) cloud.facade.data = local.facade.data;
 }
-export async function syncAll() {
-  if (!cloudEnabled || !isSignedIn()) return;
-  for (const store of ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const) {
-    let cloud: Awaited<ReturnType<typeof pullAll>>;
+const SYNC_STORES = ['branches', 'inspections', 'actions', 'equipment', 'baristas', 'baristaEvals'] as const;
+type Rec = { id: string; updatedAt?: string };
+/** Brings cloud records that are new or newer into the device store. Returns how many were written. */
+let applyLock: Promise<unknown> = Promise.resolve();
+function applyCloud(store: StoreName, cloud: Rec[]): Promise<number> {
+  // The live listener and a full sync can deliver the same record together: apply one batch at a time.
+  const run = applyLock.then(() => applyCloudNow(store, cloud));
+  applyLock = run.catch(() => 0);
+  return run;
+}
+async function applyCloudNow(store: StoreName, cloud: Rec[]): Promise<number> {
+  const local = await localRepository.list<Rec>(store);
+  const localById = new Map(local.map(x => [x.id, x]));
+  let wrote = 0;
+  for (const c of cloud) {
+    const l = localById.get(c.id);
+    const base = readSynced()[c.id];
+    const li = l as unknown as Inspection | undefined, ci = c as unknown as Inspection;
+    if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
+        && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt && (c as { _writer?: string })._writer !== DEVICE_ID) {
+      // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
+      saveConflict(ci);
+      continue;
+    }
+    if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
+      const copy = JSON.parse(JSON.stringify(c)) as Rec;
+      if (store === 'inspections') { if (l) keepLocalMedia(l as unknown as Inspection, copy as unknown as Inspection); await fillPhotos(copy as never).catch(() => {}); }
+      delete (copy as { _writer?: string })._writer;
+      markSynced(c.id, c.updatedAt);
+      await localRepository.put(store, copy as never);
+      wrote++;
+    } else if (c.updatedAt && l.updatedAt === c.updatedAt) markSynced(c.id, c.updatedAt);
+  }
+  return wrote;
+}
+/** After sign-in / on resume: bring down anything missing or newer, then push local-only items up. One run at a time. */
+let syncing: Promise<void> | null = null;
+export function syncAll(): Promise<void> {
+  if (!cloudEnabled || !isSignedIn()) return Promise.resolve();
+  if (syncing) return syncing;
+  syncing = runSync().finally(() => { syncing = null; });
+  return syncing;
+}
+async function runSync() {
+  let wrote = 0;
+  for (const store of SYNC_STORES) {
+    let cloud: Rec[];
     // A store the user may not read (e.g. barista evaluations for inspectors) must not stop the others.
     try { cloud = await pullAll(store); } catch { continue; }
-    const local = await localRepository.list<{ id: string; updatedAt?: string }>(store);
-    const localById = new Map(local.map(x => [x.id, x]));
-    const cloudIds = new Set(cloud.map(x => x.id));
-    for (const c of cloud) {
-      const l = localById.get(c.id);
-      const base = readSynced()[c.id];
-      const li = l as unknown as Inspection | undefined, ci = c as unknown as Inspection;
-      if (store === 'inspections' && li && li.status === 'draft' && ci.status === 'draft' && base && c.updatedAt && l!.updatedAt
-          && c.updatedAt > base && l!.updatedAt > base && c.updatedAt !== l!.updatedAt && (c as { _writer?: string })._writer !== DEVICE_ID) {
-        // Both devices changed the same draft since the last sync: keep both, let the inspector decide per item.
-        saveConflict(ci);
-        continue;
-      }
-      if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
-        if (l && store === 'inspections') keepLocalMedia(l as unknown as Inspection, c as unknown as Inspection);
-        markSynced(c.id, c.updatedAt);
-        await localRepository.put(store, c as never);
-      }
-    }
+    wrote += await applyCloud(store, cloud);
+    if (wrote) { emitChange('cloud'); wrote = 0; }
+    if (store === 'branches') continue; // master data: only edits made through the app (put) reach the cloud
+    const local = await localRepository.list<Rec>(store);
+    const cloudById = new Map(cloud.map(x => [x.id, x]));
     for (const l of local) {
-      const c = cloud.find(x => x.id === l.id);
-      // Branches are master data: only edits made through the app (put) reach the cloud, never a bulk push.
-      if (store === 'branches') continue;
+      const c = cloudById.get(l.id);
       if ((l as { training?: boolean }).training) continue; // practice visits stay on the device
       if (getConflict(l.id)) continue;
-      if (!cloudIds.has(l.id) || (c?.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
-      else if (c?.updatedAt && c.updatedAt === l.updatedAt) markSynced(l.id, l.updatedAt);
+      if (!c || (c.updatedAt && l.updatedAt && l.updatedAt > c.updatedAt)) { const ok = await pushDoc(store, l as never, readSynced()[l.id]).then(() => true).catch(e => { if (e instanceof ConflictError) saveConflict(e.cloud as unknown as Inspection); return false; }); if (ok) markSynced(l.id, l.updatedAt); }
     }
+    emitChange('pushed');
   }
+}
+/** Real-time: visits and actions from other users appear without reopening the app. Returns a stop function. */
+export function startLiveSync(): () => void {
+  if (!cloudEnabled || !isSignedIn()) return () => {};
+  const stops = (['inspections', 'actions'] as const).map(store => {
+    let queue = Promise.resolve();
+    return watchStore(store, docs => { queue = queue.then(() => applyCloud(store, docs)).then(n => { if (n) emitChange('cloud'); }).catch(() => {}); });
+  });
+  return () => stops.forEach(f => f());
 }
 export const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 export const emptyAnswer = (): Answer => ({ value: null, observation: '', recommendation: '', recurring: false, severity: 'Minor', attachments: [] });
