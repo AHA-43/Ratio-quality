@@ -18,6 +18,7 @@ import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistV
 import { ExportBar, MailHistory } from './features/ExportBar';
 import { FacadeCapture, facadeFor } from './features/facade';
 import { ApprovalAlert } from './features/approval-alert';
+import { sessionGreeting } from './features/greeting';
 import { CloudUsageCard } from './features/cloud-usage';
 import { appVersion, buildDiagnostics, clearErrors, getErrors } from './errorlog';
 import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
@@ -57,7 +58,6 @@ import { type ActionItem, type Answer, type Attachment, type Branch, type Inspec
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
-const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'صباح الخير' : h < 17 ? 'مساء الخير' : 'مساء النور'; };
 if (typeof document !== 'undefined') initDisplay();
 const nav = [
   { href: '/', label: 'الرئيسية', icon: RIconHome },
@@ -288,7 +288,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
     <InstallCard/>
     <TrainingDone/>
     <div className="today">
-      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{greeting()}{profile?.name && !looksAutoNamed(profile) ? `، ${profile.name.split(' ')[0]}` : ''}</h1></div><span className="hello-actions"><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link><Link href="/inspection/new?quick=1" className="button button-soft near-btn" data-testid="button-home-quick"><MapPin size={17}/> أقرب فرع</Link></span></div>
+      <div className="today-hello"><div><small>{new Date().toLocaleDateString('ar-SA-u-nu-latn', { weekday: 'long', day: 'numeric', month: 'long' })}</small><h1>{sessionGreeting(profile?.name && !looksAutoNamed(profile) ? profile.name : undefined)}</h1></div><span className="hello-actions"><Link href="/inspection/new" className="button button-primary" data-testid="button-start-inspection"><Plus size={18}/> زيارة جديدة</Link><Link href="/inspection/new?quick=1" className="button button-soft near-btn" data-testid="button-home-quick"><MapPin size={17}/> أقرب فرع</Link></span></div>
       {latestDraft ? <Link href={`/inspection/${latestDraft.id}`} className="continue-card"><span className="ring" style={{ ['--p' as string]: draftPct }}><b>{draftPct}%</b></span><span><small>{latestDraft.workflow === 'returned' ? 'أُعيدت للتصحيح' : 'زيارة لم تكتمل'}</small><h2>{latestDraft.branchName}</h2><span className="cta">أكمل من حيث توقفت ←</span></span></Link>
         : <Link href="/inspection/new" className="continue-card"><span className="ring" style={{ ['--p' as string]: 0 }}><b>+</b></span><span><small>لا توجد زيارة مفتوحة</small><h2>ابدأ زيارة جودة</h2><span className="cta">اختر الفرع وابدأ الفحص ←</span></span></Link>}
       <div className="attention">
