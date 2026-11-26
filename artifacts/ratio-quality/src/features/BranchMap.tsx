@@ -18,8 +18,8 @@ export function BranchMap({ branches, scores = {}, selected, onSelect, me, heigh
   useEffect(() => {
     if (!el.current || map.current) return;
     const m = L.map(el.current, { zoomControl: false, attributionControl: true, maxBounds: [[10, 30], [36, 60]], minZoom: 4 }).fitBounds(KSA);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 18 }).addTo(m);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 18, pane: 'shadowPane' }).addTo(m);
+    // OpenStreetMap standard tiles (free, no key). Muted with a CSS filter so pins stay the focus.
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19, className: 'osm-tiles' }).addTo(m);
     L.control.zoom({ position: 'bottomleft' }).addTo(m);
     layer.current = L.layerGroup().addTo(m); map.current = m;
     setTimeout(() => m.invalidateSize(), 120);

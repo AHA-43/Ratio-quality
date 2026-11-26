@@ -869,3 +869,5 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .pdf-capture *, .pdf-capture *::before, .pdf-capture *::after { animation: none !important; transition: none !important; }
 .pdf-capture .print-report { box-shadow: none; border: 0; border-radius: 0; }
 @media (max-width: 767px), (pointer: coarse) { .print-only-desktop { display: none !important; } }
+/* street map: OpenStreetMap tiles toned down to the brand's quiet palette */
+.leaflet-tile.osm-tiles, .osm-tiles { filter: grayscale(0.85) sepia(0.12) brightness(1.04) contrast(0.92); }
