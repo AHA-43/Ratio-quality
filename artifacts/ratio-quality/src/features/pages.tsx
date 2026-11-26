@@ -207,7 +207,7 @@ export function BaristasPage({ data }: { data: AppData }) {
   const reload = () => list<Barista>('baristas').then(setBaristas);
   useEffect(() => { reload(); list<BaristaEval>('baristaEvals').then(setEvals); }, []);
   const addBarista = async () => {
-    const br = data.branches.find(b => b.id === newBranch); const name = newName.trim();
+    const br = data.branches.find(b => b.id === (branch || newBranch)); const name = newName.trim();
     if (!name || !br) { setMsg('اكتب اسم الباريستا واختر الفرع.'); return; }
     if (baristas.some(b => b.branchId === br.id && nameKey(b.name) === nameKey(name))) { setMsg('هذا الباريستا مسجل مسبقاً في نفس الفرع.'); return; }
     await put('baristas', { id: newId(), name, branchId: br.id, branchName: br.name, active: true, updatedAt: nowIso() } as Barista); setNewName(''); setMsg('تمت الإضافة.'); reload();
@@ -222,7 +222,7 @@ export function BaristasPage({ data }: { data: AppData }) {
   return <div className="page-content">
     <Title eyebrow="أداء الباريستا" title="سجل الباريستا" detail="تاريخ التقييمات الفردية، المقارنة بين الزيارات، وفجوات المهارة المتكررة (بند فشل مرتين أو أكثر)."/>
     <label className="field"><span>الفرع</span><select value={branch} onChange={e => setBranch(e.target.value)}><option value="">الكل</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-    <div className="surface-card barista-add"><b>إضافة باريستا</b><div className="barista-add-row"><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="اسم الباريستا" aria-label="اسم الباريستا"/><select value={newBranch} onChange={e => setNewBranch(e.target.value)} aria-label="الفرع"><option value="">اختر الفرع</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select><button type="button" className="button button-primary" onClick={addBarista}>إضافة</button></div>{msg && <small>{msg}</small>}<label className="recurring-toggle"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)}/><span className="fake-check"/><span>إظهار الموقوفين</span></label></div>
+    <div className="surface-card barista-add"><b>إضافة باريستا</b><div className="barista-add-row"><input value={newName} onChange={e => setNewName(e.target.value)} placeholder="اسم الباريستا" aria-label="اسم الباريستا"/>{!branch && <select value={newBranch} onChange={e => setNewBranch(e.target.value)} aria-label="فرع الباريستا الجديد"><option value="">اختر الفرع</option>{data.branches.filter(b => !b.archived).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}<button type="button" className="button button-primary" onClick={addBarista}>إضافة</button></div>{msg && <small>{msg}</small>}<label className="recurring-toggle"><input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)}/><span className="fake-check"/><span>إظهار الموقوفين</span></label></div>
     {!rows.length && <div className="surface-card empty-note">لا توجد تقييمات بعد. ابدأ من صفحة الزيارة ← «تقييم الباريستا».</div>}
     <div className="action-cards">{rows.map(({ b, es, scores, gaps }) => <section key={b.id} className="surface-card">
       <div className="action-head"><b>{b.name}{!b.active && <em className="wf-pill returned"> موقوف</em>}</b><span className="action-date">{b.branchName}</span></div>
