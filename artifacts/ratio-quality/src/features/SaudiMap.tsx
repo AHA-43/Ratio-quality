@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import shape from './saudi-shape.json';
 import type { Branch } from '../data';
-import { branchPos, cityOf, distanceKm, fmtKm, type Pos } from './geo';
+import { branchPos, cityOf, distanceKm, fmtKm, regionOf, shortRegion, type Pos } from './geo';
 import type { BranchScore } from './position';
 
 const { viewBox, proj, ksa, neighbours } = shape as { viewBox: string; proj: { minLng: number; maxLat: number; k: number; s: number }; ksa: string; neighbours: string };
@@ -10,6 +10,8 @@ const xy = (p: { lat: number; lng: number }) => [(p.lng - proj.minLng) * proj.k 
 const toneOf = (v: number | null) => v == null ? 'none' : v >= 90 ? 'good' : v >= 80 ? 'ok' : v >= 70 ? 'warn' : 'bad';
 
 /** The Kingdom's own silhouette; each city is a bubble sized by its branches and coloured by their average result. */
+/** Crowded south-west: these regions put their name beside the bubble instead of above it. */
+const SIDE = new Set(['منطقة عسير', 'منطقة جازان']);
 export function SaudiMap({ branches, scores = {}, onSelect, me }: { branches: Branch[]; scores?: BranchScore; onSelect?: (id: string) => void; me?: Pos | null }) {
   const [city, setCity] = useState<string | null>(null);
   const [vb, setVb] = useState({ x: 0, y: 0, w: VW, h: VH });
@@ -44,7 +46,7 @@ export function SaudiMap({ branches, scores = {}, onSelect, me }: { branches: Br
   }
   const cities = useMemo(() => {
     const m = new Map<string, { name: string; items: { b: Branch; p: Pos }[] }>();
-    for (const b of branches) { const p = branchPos(b.id, b.name); if (!p) continue; const c = cityOf(b.name); (m.get(c) ?? m.set(c, { name: c, items: [] }).get(c)!).items.push({ b, p }); }
+    for (const b of branches) { const p = branchPos(b.id, b.name); if (!p) continue; const c = regionOf(b.name); (m.get(c) ?? m.set(c, { name: c, items: [] }).get(c)!).items.push({ b, p }); }
     return [...m.values()].map(c => {
       const lat = c.items.reduce((a, x) => a + x.p.lat, 0) / c.items.length, lng = c.items.reduce((a, x) => a + x.p.lng, 0) / c.items.length;
       const sc = c.items.map(x => scores[x.b.id]?.score).filter((v): v is number => v != null);
@@ -64,20 +66,20 @@ export function SaudiMap({ branches, scores = {}, onSelect, me }: { branches: Br
       <path d={ksa} className="ksa" fill="url(#ksa-fill)" filter="url(#ksa-shadow)" style={{ strokeWidth: 2.6 / zoom }}/>
       <path d={ksa} fill="url(#ksa-pct)" className="ksa-pattern"/>
       <text x="720" y="760" className="sea">بحر العرب</text><text x="95" y="420" className="sea" transform="rotate(52 95 420)">البحر الأحمر</text><text x="905" y="300" className="sea">الخليج العربي</text>
-      {cities.map((c, k) => { const [x, y] = xy(c); const r = (16 + Math.sqrt(c.items.length) * 8) / zoom; const showLabel = zoom > 1.5 || c.items.length >= 4 || city === c.name; return <g key={c.name} className={`city tone-${toneOf(c.avg)} ${city === c.name ? 'on' : ''}`} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`} style={{ animationDelay: `${k * 35}ms` }} onClick={() => pick(c.name, x, y)} role="button" aria-label={`${c.name}: ${c.items.length} فروع`}>
+      {cities.map((c, k) => { const [x, y] = xy(c); const r = (16 + Math.sqrt(c.items.length) * 8) / zoom; const showLabel = true; return <g key={c.name} transform={`translate(${x.toFixed(1)} ${y.toFixed(1)})`}><g className={`city tone-${toneOf(c.avg)} ${city === c.name ? 'on' : ''}`} style={{ animationDelay: `${k * 35}ms` }} onClick={() => pick(c.name, x, y)} role="button" aria-label={`${c.name}: ${c.items.length} فروع`}>
         <circle r={r + 8 / zoom} className="halo"/><circle r={r} className="dot" style={{ strokeWidth: 4 / zoom }}/>
         <text className="count" dy={9 / zoom} style={{ fontSize: 26 / zoom }}>{c.items.length}</text>
-        {showLabel ? <text className="label" y={-r - 10 / zoom} style={{ fontSize: 30 / zoom, strokeWidth: 8 / zoom }}>{c.name}</text> : null}
-      </g>; })}
+        {showLabel ? (SIDE.has(c.name) ? <text className="label" x={-r - 10 / zoom} dy={10 / zoom} style={{ fontSize: 30 / zoom, strokeWidth: 8 / zoom, textAnchor: 'end', direction: 'ltr' }}>{shortRegion(c.name)}</text> : <text className="label" y={-r - 10 / zoom} style={{ fontSize: 30 / zoom, strokeWidth: 8 / zoom }}>{shortRegion(c.name)}</text>) : null}
+      </g></g>; })}
       {meXY && <g transform={`translate(${meXY[0].toFixed(1)} ${meXY[1].toFixed(1)})`} className="me"><circle r={26 / zoom} className="me-halo"/><circle r={11 / zoom} style={{ strokeWidth: 4 / zoom }}/></g>}
     </svg>
     {zoom > 1.2 && <button type="button" className="sm-reset" onClick={() => { setCity(null); zoomTo({ x: 0, y: 0, w: VW, h: VH }); }}>↺ عرض المملكة كاملة</button>}
     <div className="sm-legend"><span><i className="tone-good"/>ممتاز</span><span><i className="tone-ok"/>جيد</span><span><i className="tone-warn"/>يحتاج تحسين</span><span><i className="tone-bad"/>غير مقبول</span><span><i className="tone-none"/>لم يُزر</span></div>
     {active ? <div className="sm-city"><div className="sm-head"><b>{active.name}</b><small>{active.items.length} فروع{active.avg != null ? ` · متوسط ${active.avg.toFixed(1)}%` : ''}</small><button type="button" onClick={() => { setCity(null); zoomTo({ x: 0, y: 0, w: VW, h: VH }); }}>✕</button></div>
-      <div className="sm-list">{active.items.sort((a, b) => me ? distanceKm(me, a.p) - distanceKm(me, b.p) : a.b.name.localeCompare(b.b.name, 'ar')).map(({ b, p }) => { const s = scores[b.id]; return <button type="button" key={b.id} onClick={() => onSelect?.(b.id)} className="sm-branch">
+      <div className="sm-list">{active.items.sort((a, b) => me ? distanceKm(me, a.p) - distanceKm(me, b.p) : cityOf(a.b.name).localeCompare(cityOf(b.b.name), 'ar') || a.b.name.localeCompare(b.b.name, 'ar')).map(({ b, p }) => { const s = scores[b.id]; return <button type="button" key={b.id} onClick={() => onSelect?.(b.id)} className="sm-branch">
         <span className={`sm-score tone-${toneOf(s?.score ?? null)}`}>{s?.score != null ? Math.round(s.score) : '—'}</span>
-        <span className="sm-name"><b>{b.name}</b><small>{b.code ?? ''}{me ? ` · ${fmtKm(distanceKm(me, p))}` : ''}{p.exact ? '' : ' · موقع تقريبي'}</small></span>
+        <span className="sm-name"><b>{b.name}</b><small>{cityOf(b.name)}{b.code ? ` · ${b.code}` : ''}{me ? ` · ${fmtKm(distanceKm(me, p))}` : ''}{p.exact ? '' : ' · موقع تقريبي'}</small></span>
       </button>; })}</div></div>
-      : <p className="sm-hint">اضغط على مدينة لعرض فروعها</p>}
+      : <p className="sm-hint">اضغط على منطقة لعرض فروعها</p>}
   </div>;
 }
