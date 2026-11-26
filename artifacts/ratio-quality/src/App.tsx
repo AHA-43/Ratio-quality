@@ -51,7 +51,7 @@ const BaristasPage = lazyRetry(() => import('./features/pages').then(m => ({ def
 const EquipmentPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.EquipmentPage })));
 const UsersPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.UsersPage })));
 import { ApprovalPanel, PreviousVisitCard, RecurringHint, SignatureSection, TastingScores, previousInspection, signaturesComplete } from './features/workflow-ui';
-import { type ActionItem, type Answer, type Attachment, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, onDataChange, pendingUploadIds, startLiveSync, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
+import { type ActionItem, type Answer, type Attachment, type Branch, type Inspection, type Question, QUESTIONS, emptyAnswer, getConflict, onConflict, onDataChange, saveConflict, pendingUploadIds, startLiveSync, remove, syncAll, initializeBranches, list, loadQuestions, newId, put, saveQuestions } from './data';
 import { calculateScore, WEIGHTS } from './scoring';
 
 const queryClient = new QueryClient();
@@ -567,10 +567,24 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   useEffect(() => { if (!toast) return; const t = window.setTimeout(() => setToast(null), 2600); return () => window.clearTimeout(t); }, [toast]);
   useEffect(() => { if (inspection?.status === 'finalized') setLocation(`/reports/${inspection.id}`); }, [inspection?.id, inspection?.status, setLocation]);
   const inspRef = useRef(inspection); inspRef.current = inspection;
+  // What this screen last loaded or saved: tells a live update from another device apart from our own edits.
+  const lastSaved = useRef<string>(JSON.stringify(inspection?.answers ?? {}));
+  useEffect(() => { lastSaved.current = JSON.stringify(inspection?.answers ?? {}); }, [inspection?.id]);
   useEffect(() => {
     if (!inspection || inspection.status !== 'draft') return;
+    const incoming = JSON.stringify(inspection.answers ?? {});
+    if (incoming === lastSaved.current) return;
+    // Another device changed this draft: take it if nothing is being edited here, otherwise let the inspector merge.
+    if (JSON.stringify(answers) === lastSaved.current) { lastSaved.current = incoming; setAnswers(inspection.answers); }
+    else saveConflict(inspection);
+  }, [inspection?.updatedAt]);
+  useEffect(() => {
+    if (!inspection || inspection.status !== 'draft') return;
+    const snap = JSON.stringify(answers);
+    if (snap === lastSaved.current && JSON.stringify(signatures ?? null) === JSON.stringify(inspection.signatures ?? null)) { setSaved(true); return; }
     setSaved(false);
     const timer = window.setTimeout(async () => {
+      lastSaved.current = snap;
       await put('inspections', { ...(inspRef.current ?? inspection), answers, signatures, updatedAt: stamp() });
       setSaved(true); data.refresh();
     }, 450);

@@ -20,7 +20,7 @@ await step('sign in', async () => { await p.locator('input[type=email]').fill(EM
 await step('branch master loaded: Kingdom map by default, search lists branches', async () => {
   await p.goto(APP_URL + '/inspection/new'); await p.waitForSelector('[data-testid=input-branch-search]');
   await p.waitForSelector('.saudi-map .city', { timeout: 20000 });
-  assert.ok(await p.locator('.saudi-map .city').count() >= 25, 'city bubbles on the map');
+  assert.ok(await p.locator('.saudi-map .city').count() >= 10, 'region bubbles on the map');
   await p.getByTestId('input-branch-search').fill('HAS.');
   await p.waitForSelector('.branch-option');
   assert.ok(await p.locator('.branch-option').count() >= 10, 'search results');

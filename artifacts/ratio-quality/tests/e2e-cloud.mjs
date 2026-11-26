@@ -154,9 +154,11 @@ await step('rapid consecutive autosaves all reach the cloud (no self-conflict)',
 await step('same draft edited on two devices: conflict shown, nothing lost', async () => {
   await B.p.goto(APP + '/'); await B.p.waitForSelector('.today', { timeout: 20000 }); await B.p.waitForTimeout(1500);
   await B.p.goto(APP + `/inspection/${id2}`); await B.p.waitForTimeout(1500);
+  // Truly concurrent edits: B is offline while A changes the same item (with live sync, an online B would
+  // simply receive A's change first, which is not a conflict).
+  await B.c.setOffline(true);
   await A.p.goto(APP + `/inspection/${id2}`); await A.p.waitForTimeout(1000);
   await A.p.locator('.heat').nth(2).click(); await A.p.getByTestId('answer-pass-3').click(); await A.p.waitForTimeout(2500);
-  await B.c.setOffline(true);
   await B.p.locator('.heat').nth(2).click(); await B.p.getByTestId('answer-fail-3').click();
   await B.p.getByTestId('input-observation-3').fill('ملاحظة من جهاز المدير'); await B.p.waitForTimeout(1200);
   await B.c.setOffline(false); await B.p.reload(); await B.p.waitForSelector('.today, .runner-page', { timeout: 20000 }); await B.p.waitForTimeout(2500);
