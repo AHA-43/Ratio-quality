@@ -221,7 +221,32 @@ await step('admin adds a user from the Users page; the new account works and the
   const r2 = await (await fetch(`${AUTH}/accounts:signInWithPassword?key=demo-key`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'newbie@test.local', password: 'Brand-new-pass-9', returnSecureToken: true }) })).json();
   assert.ok(r2.idToken, 'new password works'); await C.c.close(); await D.c.close();
 });
+await step('branch manager: sees own approved report, answers an action with proof; cannot reach other data', async () => {
+  const insp = await fsGet(`inspections/${inspectionId}`); const branchId = val(insp.fields.branchId);
+  await fetch(`${FS}/actions/e2e-act`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { id: { stringValue: 'e2e-act' }, title: { stringValue: 'تنظيف عصا التبخير — فرع' }, description: { stringValue: 'بقايا حليب' }, recommendation: { stringValue: 'تنظيف بعد كل استخدام' }, status: { stringValue: 'مفتوح' }, severity: { stringValue: 'Major' }, branchId: { stringValue: branchId }, branchName: { stringValue: 'فرع' }, inspectionId: { stringValue: inspectionId }, questionId: { integerValue: 5 }, dueDate: { stringValue: '2030-01-01' }, responsible: { stringValue: '' } } }) });
+  const bmUid = await signUp('branch@test.local');
+  await fetch(`${FS}/users/${bmUid}`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { email: { stringValue: 'branch@test.local' }, name: { stringValue: 'مدير الفرع' }, role: { stringValue: 'branch_manager' }, canApprove: { booleanValue: false }, active: { booleanValue: true }, branchIds: { arrayValue: { values: [{ stringValue: branchId }] } } } }) });
+  const C = await newDevice();
+  await C.p.goto(APP + '/'); await C.p.waitForSelector('.login-card'); await C.p.locator('input[type=email]').fill('branch@test.local'); await C.p.locator('input[type=password]').fill('Test-pass-123'); await C.p.getByRole('button', { name: 'دخول' }).click();
+  await C.p.waitForSelector('.bp', { timeout: 20000 }); await C.p.waitForSelector('.bp-action', { timeout: 20000 });
+  assert.equal(await C.p.locator('.today').count(), 0, 'no access to the full app');
+  await C.p.locator('.bp-action input[type=file]').first().setInputFiles(new URL('./fixture-small.jpg', import.meta.url).pathname);
+  await C.p.waitForSelector('.bp-pick.has img');
+  await C.p.locator('.bp-action textarea').first().fill('تم التنظيف وتدريب الفريق');
+  await C.p.getByRole('button', { name: 'تم التصحيح — أرسل للتحقق' }).click();
+  await C.p.waitForSelector('.bp-action.waiting', { timeout: 15000 });
+  const a = await fsGet('actions/e2e-act');
+  assert.equal(val(a.fields.status), 'بانتظار التحقق');
+  assert.match(val(a.fields.evidence.arrayValue.values[0].mapValue.fields.storagePath), /^photos\//);
+  await C.p.getByRole('tab', { name: 'تقارير الزيارات' }).click(); await C.p.waitForSelector('.bp-report', { timeout: 15000 });
+  assert.deepEqual(C.errs, []);
+  await C.c.close();
+});
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
+await step('enforced Content-Security-Policy: nothing was blocked', async () => {
+  const blocked = [...A.logs, ...B.logs].filter(t => /Content Security Policy|Refused to (load|connect|execute|evaluate|apply|frame)/i.test(t));
+  assert.deepEqual(blocked, []);
+});
 
 await browser.close();
 for (const r of results) console.log(r.join(' | '));

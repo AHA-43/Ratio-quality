@@ -24,12 +24,21 @@ beforeEach(async () => {
     await setDoc(doc(db, 'baristaEvals/e1'), { evaluatorUid: 'insp', answers: {} });
     await setDoc(doc(db, 'counters/inspections'), { year: 2026, seq: 5 });
     await setDoc(doc(db, 'inspections/mine'), { status: 'draft', inspectorUid: 'insp' });
+    await setDoc(doc(db, 'users/bm'), { role: 'branch_manager', canApprove: false, active: true, branchIds: ['HAS.01'] });
+    await setDoc(doc(db, 'inspections/b1ok'), { status: 'finalized', workflow: 'approved', branchId: 'HAS.01' });
+    await setDoc(doc(db, 'inspections/b1sub'), { status: 'finalized', workflow: 'submitted', branchId: 'HAS.01' });
+    await setDoc(doc(db, 'inspections/b2ok'), { status: 'finalized', workflow: 'approved', branchId: 'HAS.02' });
+    await setDoc(doc(db, 'actions/act1'), { status: 'مفتوح', branchId: 'HAS.01', title: 't' });
+    await setDoc(doc(db, 'actions/act2'), { status: 'مفتوح', branchId: 'HAS.02', title: 't' });
   });
 });
 const as = uid => env.authenticatedContext(uid).firestore();
 
 test('new user can self-register only as plain inspector', async () => {
-  await assertSucceeds(setDoc(doc(as('newbie'), 'users/newbie'), { role: 'inspector', canApprove: false, email: 'n@x' }));
+  const newbie = env.authenticatedContext('newbie', { email: 'n@x' }).firestore();
+  await assertSucceeds(setDoc(doc(newbie, 'users/newbie'), { role: 'inspector', canApprove: false, email: 'n@x' }));
+  // a profile must carry the account's own email (no impersonating someone else's address)
+  await assertFails(setDoc(doc(env.authenticatedContext('n2', { email: 'n2@x' }).firestore(), 'users/n2'), { role: 'inspector', canApprove: false, email: 'boss@x' }));
   await assertFails(setDoc(doc(as('evil'), 'users/evil'), { role: 'admin', canApprove: true }));
 });
 test('inspector cannot change own role or approval right; admin can', async () => {
@@ -132,4 +141,32 @@ test('device health: each user writes only their own; only quality leads read ot
   await assertFails(setDoc(doc(as('insp'), 'deviceHealth/insp'), { uid: 'someone-else' }));
   await assertSucceeds(getDoc(doc(as('qm'), 'deviceHealth/insp')));
   await assertFails(getDoc(doc(as('insp2'), 'deviceHealth/insp')));
+});
+
+test('branch manager sees only own branch approved reports and actions', async () => {
+  const bm = as('bm');
+  await assertSucceeds(getDoc(doc(bm, 'inspections/b1ok')));
+  await assertFails(getDoc(doc(bm, 'inspections/b1sub')));
+  await assertFails(getDoc(doc(bm, 'inspections/b2ok')));
+  const { query, where } = await import('firebase/firestore');
+  await assertSucceeds(getDocs(query(collection(bm, 'inspections'), where('branchId', '==', 'HAS.01'), where('workflow', '==', 'approved'))));
+  await assertFails(getDocs(collection(bm, 'inspections')));
+  await assertSucceeds(getDocs(query(collection(bm, 'actions'), where('branchId', '==', 'HAS.01'))));
+  await assertFails(getDoc(doc(bm, 'actions/act2')));
+  await assertFails(getDoc(doc(bm, 'equipment/x')));
+});
+test('branch manager answers own action with proof, but cannot close it or edit anything else', async () => {
+  const bm = as('bm');
+  await assertSucceeds(updateDoc(doc(bm, 'actions/act1'), { status: 'بانتظار التحقق', evidence: [{ id: 'p', storagePath: 'photos/p' }], managerNote: 'تم', updatedAt: 'x' }));
+  await assertFails(updateDoc(doc(bm, 'actions/act1'), { status: 'مغلق' }));
+  await assertFails(updateDoc(doc(bm, 'actions/act1'), { title: 'تغيير' }));
+  await assertFails(updateDoc(doc(bm, 'actions/act2'), { status: 'بانتظار التحقق' }));
+  await assertFails(setDoc(doc(bm, 'inspections/new1'), { status: 'draft', branchId: 'HAS.01' }));
+  await assertFails(setDoc(doc(bm, 'actions/new1'), { status: 'مفتوح', branchId: 'HAS.01' }));
+});
+test('users cannot grant themselves branches; inspectors cannot hijack or create visits for others', async () => {
+  await assertFails(updateDoc(doc(as('bm'), 'users/bm'), { branchIds: ['HAS.01', 'HAS.02'] }));
+  await assertFails(setDoc(doc(as('insp'), 'inspections/forged'), { status: 'draft', inspectorUid: 'insp2' }));
+  await assertSucceeds(setDoc(doc(as('insp'), 'inspections/own'), { status: 'draft', inspectorUid: 'insp' }));
+  await assertFails(updateDoc(doc(as('insp'), 'inspections/mine'), { inspectorUid: 'insp2' }));
 });

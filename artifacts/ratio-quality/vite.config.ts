@@ -91,7 +91,7 @@ export default defineConfig({
   },
   preview: {
     // CSP_TEST=1 serves the production Content-Security-Policy (enforced) so a local run surfaces violations before deploy.
-    headers: process.env.CSP_TEST ? { 'Content-Security-Policy': readFileSync(path.resolve(import.meta.dirname, 'csp.txt'), 'utf8') + ' http://localhost:* ws://localhost:*' } : undefined,
+    headers: process.env.CSP_TEST ? { 'Content-Security-Policy': readFileSync(path.resolve(import.meta.dirname, 'csp.txt'), 'utf8').trim().replace("connect-src 'self'", "connect-src 'self' http://localhost:* ws://localhost:* http://127.0.0.1:* ws://127.0.0.1:*") } : undefined,
     port,
     host: '0.0.0.0',
     allowedHosts: true,

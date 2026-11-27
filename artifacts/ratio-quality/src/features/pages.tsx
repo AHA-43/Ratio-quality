@@ -20,6 +20,7 @@ const Title = ({ eyebrow, title, detail }: { eyebrow: string; title: string; det
 /* ===================== Corrective actions ===================== */
 const STATUSES: ActionItem['status'][] = ['مفتوح', 'مُسند', 'قيد المعالجة', 'بانتظار التحقق', 'مغلق'];
 import { isOverdue } from './overdue';
+import { MediaImg } from './media';
 export { isOverdue };
 
 export function ActionsBoard({ data }: { data: AppData }) {
@@ -44,6 +45,7 @@ export function ActionsBoard({ data }: { data: AppData }) {
     <div className="action-cards">{rows.map(a => <section key={a.id} className={`surface-card action-card ${isOverdue(a) ? 'overdue' : ''}`}>
       <div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>{a.recurring && <span className="wf-pill returned">متكرر</span>}<span className="action-date">{isOverdue(a) ? `متأخر ${overdueDays(a.dueDate)} يوم · ` : ''}الاستحقاق {a.dueDate || '—'}</span></div>
       <h3>{a.title}</h3><p className="action-description">{a.description}</p>{a.recommendation && <p>الإجراء المطلوب: {a.recommendation}</p>}
+      {(Boolean(a.evidence?.length) || a.managerNote) && <div className="action-proof"><b>{a.status === 'بانتظار التحقق' ? 'رد الفرع — بانتظار تحققك' : 'إثبات التصحيح'}</b>{a.managerNote && <p>{a.managerNote}</p>}{Boolean(a.evidence?.length) && <div className="bp-ev">{a.evidence!.map(e => <MediaImg key={e.id} att={e} alt="إثبات التصحيح"/>)}</div>}</div>}
       <div className="action-edit">
         <label className="field"><span>المسؤول (موظف أو إدارة)</span><input defaultValue={a.responsible} onBlur={e => e.target.value !== a.responsible && change(a, { responsible: e.target.value, status: a.status === 'مفتوح' && e.target.value ? 'مُسند' : a.status })}/></label>
         <label className="field"><span>الاستحقاق</span><input type="date" defaultValue={a.dueDate} onBlur={e => e.target.value !== a.dueDate && change(a, { dueDate: e.target.value })}/></label>
@@ -245,7 +247,20 @@ function DeviceLine({ h }: { h?: Health }) {
   </div>;
 }
 
+/** Pick the branches a branch manager may see (search + checkboxes). */
+function BranchChooser({ value, onChange, branches }: { value: string[]; onChange: (ids: string[]) => void; branches: Branch[] }) {
+  const [q, setQ] = useState('');
+  const shown = branches.filter(b => !b.archived && (!q || nameKey(`${b.name} ${b.code ?? ''}`).includes(nameKey(q)))).slice(0, 60);
+  return <details className="bc-pick" open={!value.length}>
+    <summary>{value.length ? `الفروع المرتبطة: ${value.map(id => branches.find(b => b.id === id)?.name ?? id).join('، ')}` : 'اختر فرع المدير'}</summary>
+    <input placeholder="ابحث باسم الفرع أو الرمز" value={q} onChange={e => setQ(e.target.value)}/>
+    <div className="bc-list">{shown.map(b => <label key={b.id}><input type="checkbox" checked={value.includes(b.id)} onChange={e => onChange(e.target.checked ? [...value, b.id] : value.filter(x => x !== b.id))}/> {b.name}{b.code ? <small> · {b.code}</small> : null}</label>)}</div>
+  </details>;
+}
+
 export function UsersPage() {
+  const [branches, setBranches] = useState<Branch[]>([]);
+  useEffect(() => { list<Branch>('branches').then(b => setBranches(b.sort((x, y) => x.name.localeCompare(y.name, 'ar')))); }, []);
   const profile = useProfile();
   const [users, setUsers] = useState<Profile[]>([]);
   const [log, setLog] = useState<Awaited<ReturnType<typeof listAudit>>>([]);
@@ -255,14 +270,15 @@ export function UsersPage() {
   const load = () => listUsers().then(setUsers).catch(() => setErr('تعذّر تحميل المستخدمين (يتطلب صلاحية مدير واتصالاً بالإنترنت).'));
   useEffect(() => { load(); listAudit().then(l => setLog(l.slice(0, 60))).catch(() => {}); }, []);
   const [adding, setAdding] = useState(false); const [busy, setBusy] = useState(false);
-  const [nu, setNu] = useState<{ name: string; email: string; role: Role; canApprove: boolean }>({ name: '', email: '', role: 'inspector', canApprove: false });
+  const [nu, setNu] = useState<{ name: string; email: string; role: Role; canApprove: boolean; branchIds: string[] }>({ name: '', email: '', role: 'inspector', canApprove: false, branchIds: [] });
   const [created, setCreated] = useState<{ name: string; email: string; password: string; role: Role } | null>(null); const [addErr, setAddErr] = useState(''); const [copied, setCopied] = useState(false);
   const createUser = async (e: React.FormEvent) => {
     e.preventDefault(); setAddErr('');
     if (!nu.name.trim()) { setAddErr('اكتب اسم المستخدم.'); return; }
+    if (nu.role === 'branch_manager' && !nu.branchIds.length) { setAddErr('اختر فرع مدير الفرع.'); return; }
     if (!isValidEmail(nu.email.trim())) { setAddErr('اكتب بريداً إلكترونياً صحيحاً.'); return; }
     setBusy(true); const password = generatePassword();
-    try { await adminCreateUser({ ...nu, password }); setCreated({ name: nu.name.trim(), email: nu.email.trim().toLowerCase(), password, role: nu.role }); setNu({ name: '', email: '', role: 'inspector', canApprove: false }); setAdding(false); load(); }
+    try { await adminCreateUser({ ...nu, password }); setCreated({ name: nu.name.trim(), email: nu.email.trim().toLowerCase(), password, role: nu.role }); setNu({ name: '', email: '', role: 'inspector', canApprove: false, branchIds: [] }); setAdding(false); load(); }
     catch (er) { const c = (er as { code?: string }).code ?? ''; setAddErr(c.includes('email-already-in-use') ? 'هذا البريد مسجّل مسبقاً. ابحث عنه في القائمة أدناه.' : c.includes('invalid-email') ? 'البريد غير صحيح.' : c.includes('network') ? 'لا يوجد اتصال بالإنترنت.' : 'تعذّر إنشاء الحساب. حاول مرة أخرى.'); }
     setBusy(false);
   };
@@ -278,6 +294,7 @@ export function UsersPage() {
           <label className="field"><span>الاسم <em>*</em></span><input value={nu.name} onChange={e => setNu({ ...nu, name: e.target.value })} placeholder="الاسم الكامل" data-testid="input-new-name"/></label>
           <label className="field"><span>البريد الإلكتروني <em>*</em></span><input type="email" dir="ltr" value={nu.email} onChange={e => setNu({ ...nu, email: e.target.value })} placeholder="name@example.com" data-testid="input-new-email"/></label>
           <label className="field"><span>الدور</span><select value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value as Role })} data-testid="select-new-role">{(Object.keys(ROLE_LABEL) as Role[]).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></label>
+          {nu.role === 'branch_manager' && <div className="field wide"><span>فرع المدير <em>*</em></span><BranchChooser value={nu.branchIds} onChange={ids => setNu({ ...nu, branchIds: ids })} branches={branches}/><small className="small-muted">يرى تقارير فرعه المعتمدة فقط، ويرد على إجراءاته بصورة إثبات.</small></div>}
           <label className="sig-decline"><input type="checkbox" checked={nu.canApprove} onChange={e => setNu({ ...nu, canApprove: e.target.checked })}/> مخوّل باعتماد التقارير</label>
           <p className="small-muted">تُولَّد كلمة مرور تلقائياً وتظهر لك مرة واحدة لترسلها للمستخدم.</p>
           {addErr && <div className="form-error" role="alert">{addErr}</div>}
@@ -291,7 +308,8 @@ export function UsersPage() {
       <div className="action-head"><b>{u.name || u.email}</b><span className="action-date" dir="ltr">{u.email}</span></div>
       <div className="action-edit">
         <label className="field"><span>الدور</span><select disabled={!admin || u.uid === profile?.uid} value={u.role} onChange={async e => { await updateUser(u.uid, { role: e.target.value as Role }); load(); }}>{(Object.keys(ROLE_LABEL) as Role[]).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></label>
-        <label className="sig-decline"><input type="checkbox" disabled={!admin} checked={u.canApprove} onChange={async e => { await updateUser(u.uid, { canApprove: e.target.checked }); load(); }}/> مخوّل باعتماد التقارير</label>
+        {u.role === 'branch_manager' && <div className="field wide"><span>فروع المدير</span><BranchChooser value={u.branchIds ?? []} onChange={async ids => { if (!admin) return; await updateUser(u.uid, { branchIds: ids }); load(); }} branches={branches}/></div>}
+        <label className="sig-decline" hidden={u.role === 'branch_manager'}><input type="checkbox" disabled={!admin} checked={u.canApprove} onChange={async e => { await updateUser(u.uid, { canApprove: e.target.checked }); load(); }}/> مخوّل باعتماد التقارير</label>
         <label className="sig-decline"><input type="checkbox" disabled={!admin || u.uid === profile?.uid} checked={u.active} onChange={async e => { await updateUser(u.uid, { active: e.target.checked }); load(); }}/> الحساب نشط</label>
       </div>
       <small>{canApprove(u) ? 'يستطيع الاعتماد' : 'لا يستطيع الاعتماد'}</small>

@@ -1,6 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie';
 import masterBranches from './branches.master.json';
 import extraBranches from './branches.extra.json'; // branches added by hand (survive a re-import of the workbook)
+import { getProfile } from './session';
 import { ConflictError, DEVICE_ID, cloudEnabled, isSignedIn, pushDoc, pullAll, removeDoc, resolvePhoto, watchStore } from './cloud';
 
 export type Severity = 'Critical' | 'Major' | 'Minor';
@@ -53,7 +54,7 @@ export type Inspection = {
 };
 export type Branch = { id: string; code?: string; name: string; city: string; manager?: string; archived: boolean; demo?: boolean; updatedAt?: string };
 export type ActionItem = { id: string; title: string; description: string; branchName: string; questionId: number; inspectionId: string; responsible: string; dueDate: string; status: 'مفتوح' | 'مُسند' | 'قيد المعالجة' | 'بانتظار التحقق' | 'مغلق'; severity: Severity; recommendation: string; evidence?: Attachment[];
-  branchId?: string; createdAt?: string; history?: { status: string; at: string; by: string; note?: string }[]; verifiedBy?: string; verifiedAt?: string; equipmentId?: string; recurring?: boolean };
+  branchId?: string; createdAt?: string; history?: { status: string; at: string; by: string; note?: string }[]; verifiedBy?: string; verifiedAt?: string; equipmentId?: string; recurring?: boolean; managerNote?: string; updatedAt?: string };
 export type Equipment = { id: string; branchId: string; branchName: string; category: string; manufacturer: string; model: string; serial?: string; installedAt?: string; status: 'يعمل' | 'يعمل بملاحظات' | 'متوقف' | 'خارج الخدمة'; lastMaintenance?: string; nextMaintenance?: string; log: { at: string; type: 'صيانة' | 'طلب صيانة' | 'ملاحظة فحص'; note: string; by: string }[]; updatedAt: string };
 export type Barista = { id: string; name: string; branchId: string; branchName: string; active: boolean; updatedAt: string };
 export type BaristaEval = { id: string; baristaId: string; baristaName: string; branchId: string; branchName: string; inspectionId: string; date: string; evaluator: string; evaluatorUid?: string; answers: Record<number, 'pass' | 'fail' | 'na'>; notes: string; updatedAt: string };
@@ -286,7 +287,7 @@ async function applyCloudNow(store: StoreName, cloud: Rec[]): Promise<number> {
 /** After sign-in / on resume: bring down anything missing or newer, then push local-only items up. One run at a time. */
 let syncing: Promise<void> | null = null;
 export function syncAll(): Promise<void> {
-  if (!cloudEnabled || !isSignedIn()) return Promise.resolve();
+  if (!cloudEnabled || !isSignedIn() || getProfile()?.role === 'branch_manager') return Promise.resolve();
   if (syncing) return syncing;
   syncing = runSync().finally(() => { syncing = null; });
   return syncing;
@@ -313,7 +314,7 @@ async function runSync() {
 }
 /** Real-time: visits and actions from other users appear without reopening the app. Returns a stop function. */
 export function startLiveSync(): () => void {
-  if (!cloudEnabled || !isSignedIn()) return () => {};
+  if (!cloudEnabled || !isSignedIn() || getProfile()?.role === 'branch_manager') return () => {};
   const stops = (['inspections', 'actions'] as const).map(store => {
     let queue = Promise.resolve();
     return watchStore(store, docs => { queue = queue.then(() => applyCloud(store, docs)).then(n => { if (n) emitChange('cloud'); }).catch(() => {}); });

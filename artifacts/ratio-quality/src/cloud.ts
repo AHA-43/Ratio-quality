@@ -54,6 +54,18 @@ type AnyDoc = { id: string; [k: string]: any };
 const uploadedPhotos = new Set<string>();
 async function prepare(store: string, value: AnyDoc): Promise<{ cloudCopy: AnyDoc; uploaded: Record<string, string> }> {
   const uploaded: Record<string, string> = {};
+  if (store === 'actions' && Array.isArray(value.evidence) && value.evidence.length) {
+    // corrective-action proof photos: same photos collection, the action keeps references only
+    const ev: Att[] = [];
+    for (const a of value.evidence as Att[]) {
+      let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);
+      if (!ref && a.data?.startsWith('data:image/') && a.data.length < 1_000_000) {
+        try { await setDoc(doc(fs!, 'photos', a.id), { inspectionId: value.inspectionId ?? '', questionId: Number(value.questionId ?? 0), actionId: value.id, data: a.data, uid: auth!.currentUser!.uid, at: new Date().toISOString() }); ref = `photos/${a.id}`; uploaded[a.id] = ref; uploadedPhotos.add(a.id); } catch { /* retried on next save */ }
+      }
+      ev.push({ ...a, data: '', storagePath: ref ?? 'pending' });
+    }
+    return { cloudCopy: { ...value, evidence: ev }, uploaded };
+  }
   if (store !== 'inspections' || !value.answers) return { cloudCopy: value, uploaded };
   const up = async (a: Att, qid: number): Promise<Att> => {
     let ref = a.storagePath ?? (uploadedPhotos.has(a.id) ? `photos/${a.id}` : undefined);

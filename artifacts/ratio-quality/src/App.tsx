@@ -200,7 +200,7 @@ function AccountCard() {
   if (!cloudEnabled) return null;
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setMsg(null);
-    if (pw.length < 8) { setMsg({ ok: false, t: 'كلمة المرور الجديدة يجب ألا تقل عن 8 أحرف.' }); return; }
+    if (pw.length < 10) { setMsg({ ok: false, t: 'كلمة المرور الجديدة يجب ألا تقل عن 10 أحرف.' }); return; }
     if (pw !== pw2) { setMsg({ ok: false, t: 'كلمتا المرور الجديدتان غير متطابقتين.' }); return; }
     setBusy(true);
     try { const { changeMyPassword } = await import('./cloud'); await changeMyPassword(cur, pw); setMsg({ ok: true, t: 'تم تغيير كلمة المرور.' }); setCur(''); setPw(''); setPw2(''); }
@@ -210,7 +210,7 @@ function AccountCard() {
   return <Card className="settings-card"><div className="card-heading"><div><span className="eyebrow">حسابي</span><h2>تغيير كلمة المرور</h2></div></div>
     <p className="small-muted" dir="ltr" style={{ textAlign: 'right' }}>{profile?.email}</p>
     <form onSubmit={submit} className="account-form"><label className="field"><span>كلمة المرور الحالية</span><input type="password" autoComplete="current-password" value={cur} onChange={e => setCur(e.target.value)} data-testid="input-pw-current"/></label>
-      <label className="field"><span>كلمة المرور الجديدة (8 أحرف أو أكثر)</span><input type="password" autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} data-testid="input-pw-new"/></label>
+      <label className="field"><span>كلمة المرور الجديدة (10 أحرف أو أكثر)</span><input type="password" autoComplete="new-password" value={pw} onChange={e => setPw(e.target.value)} data-testid="input-pw-new"/></label>
       <label className="field"><span>تأكيد كلمة المرور الجديدة</span><input type="password" autoComplete="new-password" value={pw2} onChange={e => setPw2(e.target.value)} data-testid="input-pw-confirm"/></label>
       {msg && <div className={msg.ok ? 'form-ok' : 'form-error'} role="status">{msg.t}</div>}
       <Button type="submit" disabled={busy || !cur || !pw}>{busy ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}</Button></form></Card>;
@@ -902,7 +902,14 @@ function Router() {
     <Route component={NotFound}/>
   </Switch></Suspense></AppShell></RoutedErrorBoundary>;
 }
+const BranchPortal = lazyRetry(() => import('./features/branch-portal'));
+/** Branch managers get their own small portal; everyone else the full app. */
+function Root() {
+  const p = useProfile();
+  if (p?.role === 'branch_manager') return <Suspense fallback={<div className="splash"/>}><BranchPortal/></Suspense>;
+  return <Router/>;
+}
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate><Router/></AuthGate></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><AuthGate><Root/></AuthGate></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
 }
 export default App;

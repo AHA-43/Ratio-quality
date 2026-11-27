@@ -95,6 +95,20 @@ jobs:
             fi
           done
           rm -f "$RUNNER_TEMP/sa.json"
+      - name: Harden sign-in (password policy, email-enumeration protection)
+        continue-on-error: true
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -uo pipefail
+          echo "$FIREBASE_SERVICE_ACCOUNT" > "$RUNNER_TEMP/sa.json"
+          gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
+          TOKEN=$(gcloud auth print-access-token)
+          BODY='{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":10}}]},"emailPrivacyConfig":{"enableImprovedEmailPrivacy":true}}'
+          curl -s -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ratio-quality/config?updateMask=passwordPolicyConfig,emailPrivacyConfig" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "X-Goog-User-Project: ratio-quality" -d "$BODY" \
+            | jq -c '{passwordPolicy: .passwordPolicyConfig.passwordPolicyEnforcementState, minLength: .passwordPolicyConfig.passwordPolicyVersions[0].customStrengthOptions.minPasswordLength, emailPrivacy: .emailPrivacyConfig.enableImprovedEmailPrivacy, error: .error.message}'
+          rm -f "$RUNNER_TEMP/sa.json"
       - name: Apply roles from config/roles.json (and report how many visits each of those users has in the cloud)
         continue-on-error: true
         env:

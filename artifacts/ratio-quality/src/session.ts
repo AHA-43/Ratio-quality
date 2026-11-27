@@ -4,9 +4,10 @@ import { addDoc, collection, doc, getDoc, getDocs, runTransaction, setDoc, updat
 import { auth, cloudEnabled, fs, createAccountAsAdmin } from './cloud';
 import type { Inspection, Question } from './data';
 
-export type Role = 'admin' | 'quality_manager' | 'inspector';
-export type Profile = { uid: string; email: string; name: string; role: Role; canApprove: boolean; active: boolean };
-export const ROLE_LABEL: Record<Role, string> = { admin: 'مدير النظام', quality_manager: 'مدير الجودة', inspector: 'مفتش جودة' };
+export type Role = 'admin' | 'quality_manager' | 'inspector' | 'branch_manager';
+export type Profile = { uid: string; email: string; name: string; role: Role; canApprove: boolean; active: boolean; branchIds?: string[] };
+export const ROLE_LABEL: Record<Role, string> = { admin: 'مدير النظام', quality_manager: 'مدير الجودة', inspector: 'مفتش جودة', branch_manager: 'مدير فرع' };
+export const isBranchManager = (p: Profile | null | undefined) => p?.role === 'branch_manager';
 
 const LOCAL_PROFILE: Profile = { uid: 'local', email: '', name: '', role: 'admin', canApprove: true, active: true };
 let current: Profile | null = cloudEnabled ? null : LOCAL_PROFILE;
@@ -29,7 +30,7 @@ export async function loadProfile(): Promise<Profile | null> {
     } else {
       const d = snap.data() as Partial<Profile>;
       if (!d.email || !d.name) await updateDoc(ref, { email: d.email || user.email || '', name: d.name || fallbackName }).catch(() => {});
-      current = { uid: user.uid, email: d.email || user.email || '', name: d.name || fallbackName, role: (d.role as Role) || 'inspector', canApprove: Boolean(d.canApprove), active: d.active !== false };
+      current = { uid: user.uid, email: d.email || user.email || '', name: d.name || fallbackName, role: (d.role as Role) || 'inspector', canApprove: Boolean(d.canApprove), active: d.active !== false, branchIds: Array.isArray(d.branchIds) ? d.branchIds : undefined };
     }
     try { localStorage.setItem(cacheKey(user.uid), JSON.stringify(current)); } catch { /* storage unavailable */ }
   } catch {
@@ -48,7 +49,7 @@ export function useProfile() {
   return p;
 }
 export const getProfile = () => current;
-export const canApprove = (p: Profile | null) => Boolean(p && p.active && (p.role === 'admin' || p.role === 'quality_manager' || p.canApprove));
+export const canApprove = (p: Profile | null) => Boolean(p && p.active && p.role !== 'branch_manager' && (p.role === 'admin' || p.role === 'quality_manager' || p.canApprove));
 export const isQualityLead = (p: Profile | null) => Boolean(p && (p.role === 'admin' || p.role === 'quality_manager'));
 
 export async function listUsers(): Promise<Profile[]> {
@@ -61,13 +62,14 @@ export function generatePassword() {
   const alpha = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'; const buf = new Uint32Array(12); crypto.getRandomValues(buf);
   const c = [...buf].map(n => alpha[n % alpha.length]).join(''); return `${c.slice(0, 4)}-${c.slice(4, 8)}-${c.slice(8)}`;
 }
-export async function adminCreateUser(input: { name: string; email: string; role: Role; canApprove: boolean; password: string }): Promise<string> {
+export async function adminCreateUser(input: { name: string; email: string; role: Role; canApprove: boolean; password: string; branchIds?: string[] }): Promise<string> {
   const uid = await createAccountAsAdmin(input.email.trim().toLowerCase(), input.password, input.name.trim());
-  if (input.role !== 'inspector' || input.canApprove) await updateUser(uid, { role: input.role, canApprove: input.canApprove });
-  await audit('user.create', 'users', uid, { email: input.email, role: input.role, canApprove: input.canApprove });
+  const mgr = input.role === 'branch_manager';
+  if (input.role !== 'inspector' || input.canApprove) await updateUser(uid, { role: input.role, canApprove: mgr ? false : input.canApprove, ...(mgr ? { branchIds: input.branchIds ?? [] } : {}) });
+  await audit('user.create', 'users', uid, { email: input.email, role: input.role, canApprove: input.canApprove, branchIds: input.branchIds });
   return uid;
 }
-export async function updateUser(uid: string, patch: Partial<Pick<Profile, 'role' | 'canApprove' | 'active' | 'name'>>) {
+export async function updateUser(uid: string, patch: Partial<Pick<Profile, 'role' | 'canApprove' | 'active' | 'name' | 'branchIds'>>) {
   if (!fs) return;
   await updateDoc(doc(fs, 'users', uid), patch);
   await audit('user.update', 'users', uid, patch);

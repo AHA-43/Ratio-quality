@@ -1,2 +1,1 @@
 # One email per line. A new account is created and a Firebase "choose your password" email is sent once.
-rbosaeed@gmail.com

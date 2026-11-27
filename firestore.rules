@@ -13,59 +13,74 @@ service cloud.firestore {
     // Practice visits never reach the cloud.
     function notTraining() { return request.resource.data.get('training', false) != true; }
     function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    // Branch managers: see only their own branches' approved reports and corrective actions, and answer those actions.
+    function isBranchMgr() { return hasProfile() && me().role == 'branch_manager'; }
+    function staff() { return active() && !isBranchMgr(); }
+    function myBranch(b) { return isBranchMgr() && active() && b in me().get('branchIds', []); }
 
     // Profiles: a user may create their own as a plain inspector; only admins change roles.
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isLead());
       allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.role == 'inspector' && request.resource.data.canApprove == false;
+        && request.resource.data.role == 'inspector' && request.resource.data.canApprove == false
+        && !request.resource.data.keys().hasAny(['branchIds'])
+        && request.resource.data.get('email', '') == request.auth.token.get('email', '');
       allow update: if isAdmin()
-        || (request.auth.uid == uid && !changed().hasAny(['role', 'canApprove', 'active']));
+        || (request.auth.uid == uid && !changed().hasAny(['role', 'canApprove', 'active', 'branchIds', 'email']));
       allow delete: if false;
     }
 
     match /branches/{id} {
       allow read: if active();
-      allow create: if active();
+      allow create: if staff();
       allow update, delete: if isLead();
     }
 
     // Inspections: drafts are editable; submitted ones only by approvers (approve / return);
     // approved ones are locked for everyone.
     match /inspections/{id} {
-      allow read: if active();
-      allow create: if active() && notTraining() && (request.resource.data.get('workflow', '') != 'approved'
+      allow read: if staff() || (myBranch(resource.data.get('branchId', '')) && resource.data.get('workflow', '') == 'approved');
+      // a visit is created by the inspector doing it (quality leads may also create amendments/imports for others)
+      allow create: if staff() && notTraining()
+        && (request.resource.data.get('inspectorUid', request.auth.uid) == request.auth.uid || isLead())
+        && (request.resource.data.get('workflow', '') != 'approved'
         // past reports imported from files arrive already approved; only quality leads may add them
         || (isLead() && request.resource.data.get('imported', null) != null));
-      allow update: if active() && resource.data.get('workflow', '') != 'approved' && (
+      allow update: if staff() && resource.data.get('workflow', '') != 'approved'
+        && request.resource.data.get('inspectorUid', null) == resource.data.get('inspectorUid', null) && (
            (resource.data.status == 'draft' && request.resource.data.get('workflow', '') != 'approved' && ownsDraft() && notTraining())
         || (resource.data.status == 'finalized' && canApprove())
         || (resource.data.status == 'finalized' && changed().hasOnly(['number', 'updatedAt']))
       );
-      allow delete: if isAdmin() || (active() && resource.data.status == 'draft' && ownsDraft());
+      allow delete: if isAdmin() || (staff() && resource.data.status == 'draft' && ownsDraft());
     }
 
     // Corrective actions: closing (verification) and reopening are reserved to quality leads.
     match /actions/{id} {
-      allow read, create: if active();
-      allow update: if active()
+      allow read: if staff() || myBranch(resource.data.get('branchId', ''));
+      allow create: if staff();
+      allow update: if (staff()
         && (request.resource.data.status != 'مغلق' || isLead())
-        && (resource.data.status != 'مغلق' || isLead());
+        && (resource.data.status != 'مغلق' || isLead()))
+        // the branch answers its own action: proof photo + note, then it waits for the quality team to verify
+        || (myBranch(resource.data.get('branchId', '')) && resource.data.status != 'مغلق'
+            && request.resource.data.status in ['قيد المعالجة', 'بانتظار التحقق']
+            && changed().hasOnly(['status', 'evidence', 'history', 'managerNote', 'updatedAt']));
       allow delete: if isLead();
     }
 
     match /equipment/{id} {
-      allow read, create, update: if active();
+      allow read, create, update: if staff();
       allow delete: if isLead();
     }
     match /baristas/{id} {
-      allow read, create, update: if active();
+      allow read, create, update: if staff();
       allow delete: if isLead();
     }
     // Individual barista evaluations are personnel data: evaluator and quality leads only.
     match /baristaEvals/{id} {
       allow read: if isLead() || (signedIn() && resource.data.evaluatorUid == request.auth.uid);
-      allow create: if active() && request.resource.data.evaluatorUid == request.auth.uid;
+      allow create: if staff() && request.resource.data.evaluatorUid == request.auth.uid;
       allow update: if isLead() || (signedIn() && resource.data.evaluatorUid == request.auth.uid);
       allow delete: if isLead();
     }
@@ -88,8 +103,8 @@ service cloud.firestore {
 
     // Report distribution history: append-only.
     match /mailLog/{id} {
-      allow read: if active();
-      allow create: if active() && request.resource.data.uid == request.auth.uid;
+      allow read: if staff();
+      allow create: if staff() && request.resource.data.uid == request.auth.uid;
       allow update, delete: if false;
     }
 
@@ -110,10 +125,10 @@ service cloud.firestore {
 
     // Inspection number sequence: increments by exactly one.
     match /counters/{id} {
-      allow read: if active();
-      allow create: if active() && request.resource.data.seq == 1;
+      allow read: if staff();
+      allow create: if staff() && request.resource.data.seq == 1;
       // +1 within the same year; back to 1 only when the year moves forward.
-      allow update: if active() && ((request.resource.data.seq == resource.data.seq + 1 && request.resource.data.year == resource.data.year)
+      allow update: if staff() && ((request.resource.data.seq == resource.data.seq + 1 && request.resource.data.year == resource.data.year)
         || (request.resource.data.seq == 1 && request.resource.data.year > resource.data.year));
     }
   }
