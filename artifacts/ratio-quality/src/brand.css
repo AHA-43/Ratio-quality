@@ -1030,3 +1030,33 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .home-monthly .hm-x { position: absolute; top: 6px; left: 8px; border: 0; background: transparent; font-size: 20px; color: #8a8ab0; cursor: pointer; }
 .proof-act { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; } .proof-act .button { flex: 1; min-width: 130px; }
 .bp-returned { background: #fde8e6; color: #c43b32 !important; border-radius: 10px; padding: 8px 10px; font-weight: 700; }
+
+/* ---- map drill-down: breadcrumbs, branch pins, city chips ---- */
+.saudi-map { min-width: 0; max-width: 100%; }
+.sm-crumbs { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: #8a8ab0; }
+.sm-crumbs button { border: 0; background: transparent; padding: 4px 2px; font: inherit; font-weight: 700; color: #6b6b99; cursor: pointer; }
+.sm-crumbs button.on { color: var(--navy); }
+.saudi-map .kpin { cursor: pointer; transform-box: fill-box; transform-origin: center; animation: city-pop .45s var(--ease-spring) both; }
+.saudi-map .kpin .dot { fill: var(--navy); stroke: #fff; }
+.saudi-map .kpin .halo { fill: var(--navy); opacity: .14; }
+.saudi-map .kpin.tone-good .dot, .saudi-map .kpin.tone-good .halo { fill: #2f8a57; } .saudi-map .kpin.tone-ok .dot, .saudi-map .kpin.tone-ok .halo { fill: var(--corn); }
+.saudi-map .kpin.tone-warn .dot, .saudi-map .kpin.tone-warn .halo { fill: #c98a2b; } .saudi-map .kpin.tone-bad .dot, .saudi-map .kpin.tone-bad .halo { fill: #b3261e; }
+.saudi-map .kpin.approx .dot { opacity: .7; }
+.saudi-map .kpin.on .halo { opacity: .32; animation: halo 1.6s ease-in-out infinite; }
+.saudi-map .plabel { fill: var(--navy); font-weight: 700; font-family: 'Thmanyah Sans', sans-serif; text-anchor: middle; paint-order: stroke; stroke: #fff; stroke-linejoin: round; pointer-events: none; }
+.saudi-map.lvl-city .ksa, .saudi-map.lvl-region .ksa { fill: #eceefb; }
+.sm-chips { display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px; border-bottom: 1px solid #f0ece4; scrollbar-width: none; }
+.sm-chips::-webkit-scrollbar { display: none; }
+.sm-chips button { flex: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #d5dafc; background: var(--corn-soft); color: var(--navy); border-radius: 99px; padding: 6px 12px; font: inherit; font-size: 13px; cursor: pointer; }
+.sm-chips span { background: var(--navy); color: #fff; border-radius: 99px; min-width: 22px; padding: 0 6px; font-size: 11.5px; font-weight: 800; text-align: center; }
+.sm-gh { position: sticky; top: 0; z-index: 1; display: flex; justify-content: space-between; padding: 7px 14px; background: #f7f5f0; color: var(--navy); font-weight: 800; font-size: 13px; border-bottom: 1px solid #f0ece4; }
+.sm-gh small { color: #8a8ab0; }
+.sm-branch.on { background: var(--corn-soft); }
+.sm-list { max-height: 360px; }
+.sm-name b { overflow-wrap: anywhere; }
+.sm-stage { position: relative; }
+.saudi-map .sm-stage > svg:first-child { display: block; }
+.saudi-map svg.sm-overlay { position: absolute; inset: 0; width: 100%; height: 100%; background: none; border-color: transparent; pointer-events: none; }
+.saudi-map svg.sm-overlay .city, .saudi-map svg.sm-overlay .kpin { pointer-events: auto; }
+/* never let anything push the page sideways on phones (sticky headers keep working with clip) */
+@supports (overflow: clip) { html, body { overflow-x: clip; } .main-column, .page-content { max-width: 100%; overflow-x: clip; } }
