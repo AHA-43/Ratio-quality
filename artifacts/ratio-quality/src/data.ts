@@ -273,7 +273,8 @@ async function applyCloudNow(store: StoreName, cloud: Rec[]): Promise<number> {
       saveConflict(ci);
       continue;
     }
-    if (!l || (c.updatedAt && l.updatedAt && c.updatedAt > l.updatedAt)) {
+    // a cloud copy with a timestamp beats a local copy without one (older actions had none)
+    if (!l || (c.updatedAt && (!l.updatedAt || c.updatedAt > l.updatedAt))) {
       const copy = JSON.parse(JSON.stringify(c)) as Rec;
       if (store === 'inspections') { if (l) keepLocalMedia(l as unknown as Inspection, copy as unknown as Inspection); await fetchMissingMedia(copy as unknown as Inspection).catch(() => {}); }
       delete (copy as { _writer?: string })._writer;

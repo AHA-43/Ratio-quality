@@ -14,6 +14,7 @@ import { sessionGreeting } from './greeting';
 const SEV_AR: Record<string, string> = { Critical: 'حرج', Major: 'رئيسي', Minor: 'ثانوي' };
 const today = () => new Date().toISOString().slice(0, 10);
 const overdue = (a: ActionItem) => a.status !== 'مغلق' && a.status !== 'بانتظار التحقق' && Boolean(a.dueDate) && a.dueDate < today();
+const canAnswerState = (a: ActionItem) => a.status !== 'مغلق' && a.status !== 'بانتظار التحقق';
 const failed = (i: Inspection, id: number) => { const a = i.answers?.[id]; return Boolean(a && (a.value === 'fail' || a.initialValue === 'fail')); };
 
 export default function BranchPortal() {
@@ -117,6 +118,7 @@ function ActionCard({ a, onDone }: { a: ActionItem; onDone: (a: ActionItem) => v
     <h3>{a.title.replace(/ — .*$/, '')}</h3>
     {a.description && <p>{a.description}</p>}
     {a.recommendation && <p className="bp-a-rec"><b>المطلوب:</b> {a.recommendation}</p>}
+    {(() => { const h = a.history?.at(-1); return canAnswerState(a) && h?.note?.startsWith('أُعيد للفرع') ? <p className="bp-returned">{h.note} — {h.by}</p> : null; })()}
     {Boolean(a.evidence?.length) && <div className="bp-ev">{a.evidence!.map(e => <MediaImg key={e.id} att={e} alt="إثبات"/>)}</div>}
     {a.managerNote && !canAnswer && <small className="bp-note">ملاحظتكم: {a.managerNote}</small>}
     {canAnswer && <div className="bp-answer">

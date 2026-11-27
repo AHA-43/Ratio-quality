@@ -81,7 +81,7 @@ jobs:
           gcloud auth activate-service-account --key-file="$RUNNER_TEMP/sa.json" --quiet
           TOKEN=$(gcloud auth print-access-token)
           KEY=$(grep -m1 '^VITE_FIREBASE_API_KEY=' artifacts/ratio-quality/.env.production | cut -d= -f2)
-          grep -vE '^\s*(#|$)' config/invites.txt | while read -r EMAIL; do
+          { grep -vE '^\s*(#|$)' config/invites.txt || true; } | while read -r EMAIL; do
             PW=$(openssl rand -base64 24)
             BODY=$(jq -n --arg e "$EMAIL" --arg p "$PW" '{email:$e,password:$p,emailVerified:true}')
             RES=$(curl -s -X POST "https://identitytoolkit.googleapis.com/v1/projects/ratio-quality/accounts" \

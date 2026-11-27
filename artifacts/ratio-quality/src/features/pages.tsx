@@ -32,9 +32,18 @@ export function ActionsBoard({ data }: { data: AppData }) {
   const rows = data.actions.filter(a => filter === 'الكل' ? true : filter === 'مفتوحة' ? a.status !== 'مغلق' : filter === 'متأخرة' ? isOverdue(a) : filter === 'متكررة' ? a.recurring : a.status === filter)
     .sort((x, y) => (x.dueDate || '9').localeCompare(y.dueDate || '9'));
   const closed = data.actions.filter(a => a.status === 'مغلق').length;
+  // Older actions were saved without their branch id: fill it from the visit so branch managers see them.
+  useEffect(() => {
+    if (!lead) return;
+    const fix = data.actions.filter(a => !a.branchId && a.inspectionId);
+    if (!fix.length) return;
+    (async () => { let n = 0; for (const a of fix) { const i = data.inspections.find(x => x.id === a.inspectionId); if (i?.branchId) { await put('actions', { ...a, branchId: i.branchId, updatedAt: nowIso() }); n++; } } if (n) data.refresh(); })();
+  }, [lead, data.actions.length]);
+  const verify = (a: ActionItem) => change(a, { status: 'مغلق' }, 'تم التحقق من إثبات الفرع');
+  const sendBack = (a: ActionItem) => { const why = window.prompt('سبب الإرجاع للفرع (يظهر لمدير الفرع):', 'الصورة لا توضح التصحيح'); if (why?.trim()) change(a, { status: 'مُسند' }, `أُعيد للفرع: ${why.trim()}`); };
   const change = async (a: ActionItem, patch: Partial<ActionItem>, note?: string) => {
     const by = profile?.name || profile?.email || 'مستخدم';
-    const next: ActionItem = { ...a, ...patch, history: [...(a.history ?? []), { status: patch.status ?? a.status, at: nowIso(), by, note }] };
+    const next: ActionItem = { ...a, ...patch, updatedAt: nowIso(), history: [...(a.history ?? []), { status: patch.status ?? a.status, at: nowIso(), by, note }] };
     if (patch.status === 'مغلق') { next.verifiedBy = by; next.verifiedAt = nowIso(); }
     await put('actions', next); await audit('action.update', 'actions', a.id, { ...patch, note }); await data.refresh();
   };
@@ -45,7 +54,8 @@ export function ActionsBoard({ data }: { data: AppData }) {
     <div className="action-cards">{rows.map(a => <section key={a.id} className={`surface-card action-card ${isOverdue(a) ? 'overdue' : ''}`}>
       <div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>{a.recurring && <span className="wf-pill returned">متكرر</span>}<span className="action-date">{isOverdue(a) ? `متأخر ${overdueDays(a.dueDate)} يوم · ` : ''}الاستحقاق {a.dueDate || '—'}</span></div>
       <h3>{a.title}</h3><p className="action-description">{a.description}</p>{a.recommendation && <p>الإجراء المطلوب: {a.recommendation}</p>}
-      {(Boolean(a.evidence?.length) || a.managerNote) && <div className="action-proof"><b>{a.status === 'بانتظار التحقق' ? 'رد الفرع — بانتظار تحققك' : 'إثبات التصحيح'}</b>{a.managerNote && <p>{a.managerNote}</p>}{Boolean(a.evidence?.length) && <div className="bp-ev">{a.evidence!.map(e => <MediaImg key={e.id} att={e} alt="إثبات التصحيح"/>)}</div>}</div>}
+      {(Boolean(a.evidence?.length) || a.managerNote) && <div className="action-proof"><b>{a.status === 'بانتظار التحقق' ? 'رد الفرع — بانتظار تحققك' : 'إثبات التصحيح'}</b>{a.managerNote && <p>{a.managerNote}</p>}{Boolean(a.evidence?.length) && <div className="bp-ev">{a.evidence!.map(e => <MediaImg key={e.id} att={e} alt="إثبات التصحيح"/>)}</div>}
+        {lead && a.status === 'بانتظار التحقق' && <div className="proof-act"><button type="button" className="button button-primary" onClick={() => verify(a)}>تحقق وأغلق ✓</button><button type="button" className="button button-outline" onClick={() => sendBack(a)}>إرجاع للفرع</button></div>}</div>}
       <div className="action-edit">
         <label className="field"><span>المسؤول (موظف أو إدارة)</span><input defaultValue={a.responsible} onBlur={e => e.target.value !== a.responsible && change(a, { responsible: e.target.value, status: a.status === 'مفتوح' && e.target.value ? 'مُسند' : a.status })}/></label>
         <label className="field"><span>الاستحقاق</span><input type="date" defaultValue={a.dueDate} onBlur={e => e.target.value !== a.dueDate && change(a, { dueDate: e.target.value })}/></label>

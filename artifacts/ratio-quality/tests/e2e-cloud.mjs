@@ -241,6 +241,14 @@ await step('branch manager: sees own approved report, answers an action with pro
   await C.p.getByRole('tab', { name: 'تقارير الزيارات' }).click(); await C.p.waitForSelector('.bp-report', { timeout: 15000 });
   assert.deepEqual(C.errs, []);
   await C.c.close();
+  // the quality manager's device receives the branch reply and verifies it
+  await B.p.goto(APP + '/actions'); await B.p.waitForTimeout(1500);
+  await B.p.getByRole('button', { name: 'الكل' }).click().catch(() => {});
+  await B.p.waitForSelector('.action-proof', { timeout: 20000 });
+  assert.match(await B.p.locator('.action-proof').first().innerText(), /تم التنظيف/);
+  await B.p.getByRole('button', { name: 'تحقق وأغلق ✓' }).first().click();
+  let st = ''; for (let k = 0; k < 15 && st !== 'مغلق'; k++) { await new Promise(r => setTimeout(r, 1000)); st = val((await fsGet('actions/e2e-act')).fields.status); }
+  assert.equal(st, 'مغلق');
 });
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
 await step('enforced Content-Security-Policy: nothing was blocked', async () => {

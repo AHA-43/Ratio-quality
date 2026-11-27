@@ -696,7 +696,7 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   };
   const addAction = async (question: Question) => {
     const a = answers[question.id];
-    const item: ActionItem = { id: newId(), title: `${question.title} — ${inspection.branchName}`, description: a.observation, branchName: inspection.branchName, branchId: inspection.branchId, questionId: question.id, inspectionId: inspection.id, responsible, dueDate: dueDate || defaultDueDate(question.severity), status: responsible ? 'مُسند' : 'مفتوح', severity: question.severity, recommendation: a.recommendation, recurring: a.recurring, createdAt: stamp(), history: [{ status: responsible ? 'مُسند' : 'مفتوح', at: stamp(), by: inspection.inspector }], evidence:a.attachments.map(item => ({...item})) };
+    const item: ActionItem = { id: newId(), title: `${question.title} — ${inspection.branchName}`, description: a.observation, branchName: inspection.branchName, branchId: inspection.branchId, questionId: question.id, inspectionId: inspection.id, responsible, dueDate: dueDate || defaultDueDate(question.severity), status: responsible ? 'مُسند' : 'مفتوح', severity: question.severity, recommendation: a.recommendation, recurring: a.recurring, createdAt: stamp(), history: [{ status: responsible ? 'مُسند' : 'مفتوح', at: stamp(), by: inspection.inspector }], evidence:a.attachments.map(item => ({...item})) , updatedAt: stamp()};
     await put('actions', item); await data.refresh(); setActionForm(null); setMessage('تم إنشاء الإجراء التصحيحي وربطه بالزيارة.');
   };
   const selectPhoto = async (files: FileList | null, autoAnnotate = false) => {

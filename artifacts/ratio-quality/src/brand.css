@@ -1028,3 +1028,5 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .home-monthly .hm-ico { flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--navy); color: #fff; }
 .home-monthly > div { flex: 1; min-width: 180px; } .home-monthly b { display: block; font-size: 15px; } .home-monthly small { color: #6b6b99; }
 .home-monthly .hm-x { position: absolute; top: 6px; left: 8px; border: 0; background: transparent; font-size: 20px; color: #8a8ab0; cursor: pointer; }
+.proof-act { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; } .proof-act .button { flex: 1; min-width: 130px; }
+.bp-returned { background: #fde8e6; color: #c43b32 !important; border-radius: 10px; padding: 8px 10px; font-weight: 700; }
