@@ -93,6 +93,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Device health heartbeat (one doc per user): last seen, app version, uploads waiting, recent errors.
+    // Lets quality leads see when someone's phone is stuck. Written only by its owner.
+    match /deviceHealth/{uid} {
+      allow create, update: if signedIn() && request.auth.uid == uid && request.resource.data.uid == uid;
+      allow read: if isLead() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+
     // Append-only audit trail.
     match /audit/{id} {
       allow create: if signedIn() && request.resource.data.uid == request.auth.uid;

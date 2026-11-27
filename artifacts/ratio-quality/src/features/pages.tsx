@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ago, listHealth, type Health } from './device-health';
 import { Link, useRoute } from 'wouter';
 import type { ActionItem, Barista, BaristaEval, Branch, Equipment, Inspection, Question } from '../data';
 import { list, newId, put, QUESTIONS } from '../data';
@@ -234,11 +235,23 @@ export function BaristasPage({ data }: { data: AppData }) {
 }
 
 /* ===================== Users & audit (admin) ===================== */
+function DeviceLine({ h }: { h?: Health }) {
+  if (!h) return <div className="dev-line muted">لم يفتح التطبيق بعد التحديث الأخير</div>;
+  const stale = h.pending > 0 && h.oldestPending && Date.now() - Date.parse(h.oldestPending) > 3600_000;
+  return <div className={`dev-line ${stale ? 'warn' : h.pending ? 'pend' : 'ok'}`}>
+    <span>آخر ظهور {ago(h.at)} · {h.device}{h.standalone ? ' (تطبيق)' : ' (متصفح)'}</span>
+    {h.pending > 0 ? <b>{h.pending} زيارة بانتظار الرفع{h.oldestPending ? ` منذ ${ago(h.oldestPending).replace('قبل ', '')}` : ''}</b> : <b>كل زياراته مرفوعة ✓</b>}
+    {h.errors.length > 0 && <details><summary>{h.errors.length} أخطاء حديثة</summary>{h.errors.map((e, k) => <div key={k} dir="ltr"><small>{e.at.slice(5, 16).replace('T', ' ')} · {e.where}</small> {e.message}</div>)}</details>}
+  </div>;
+}
+
 export function UsersPage() {
   const profile = useProfile();
   const [users, setUsers] = useState<Profile[]>([]);
   const [log, setLog] = useState<Awaited<ReturnType<typeof listAudit>>>([]);
   const [err, setErr] = useState('');
+  const [health, setHealth] = useState<Map<string, Health>>(new Map());
+  useEffect(() => { listHealth().then(setHealth); const t = window.setInterval(() => listHealth().then(setHealth), 30000); return () => window.clearInterval(t); }, []);
   const load = () => listUsers().then(setUsers).catch(() => setErr('تعذّر تحميل المستخدمين (يتطلب صلاحية مدير واتصالاً بالإنترنت).'));
   useEffect(() => { load(); listAudit().then(l => setLog(l.slice(0, 60))).catch(() => {}); }, []);
   const [adding, setAdding] = useState(false); const [busy, setBusy] = useState(false);
@@ -282,6 +295,7 @@ export function UsersPage() {
         <label className="sig-decline"><input type="checkbox" disabled={!admin || u.uid === profile?.uid} checked={u.active} onChange={async e => { await updateUser(u.uid, { active: e.target.checked }); load(); }}/> الحساب نشط</label>
       </div>
       <small>{canApprove(u) ? 'يستطيع الاعتماد' : 'لا يستطيع الاعتماد'}</small>
+      <DeviceLine h={health.get(u.uid)}/>
     </section>)}</div>
     {log.length > 0 && <section className="surface-card"><h3>سجل التدقيق (آخر 60 حدثاً)</h3><div className="history">{log.map((l, k) => <div key={k}>{l.at.slice(0, 16).replace('T', ' ')} · {l.actor} · {l.action} · {l.entityId}</div>)}</div></section>}
   </div>;

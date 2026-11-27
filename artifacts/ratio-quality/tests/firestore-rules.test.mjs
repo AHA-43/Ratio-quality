@@ -125,3 +125,11 @@ test('past reports can be imported as approved by quality leads only', async () 
   await assertFails(setDoc(doc(as('insp'), 'inspections/imp2'), { status: 'finalized', workflow: 'approved', imported: { source: 'old.pdf' } }));
   await assertFails(updateDoc(doc(as('qm'), 'inspections/imp1'), { branchName: 'x' }));
 });
+
+test('device health: each user writes only their own; only quality leads read others', async () => {
+  await assertSucceeds(setDoc(doc(as('insp'), 'deviceHealth/insp'), { uid: 'insp', at: '2026-11-27T10:00:00Z', pending: 2 }));
+  await assertFails(setDoc(doc(as('insp'), 'deviceHealth/insp2'), { uid: 'insp2', at: 'x' }));
+  await assertFails(setDoc(doc(as('insp'), 'deviceHealth/insp'), { uid: 'someone-else' }));
+  await assertSucceeds(getDoc(doc(as('qm'), 'deviceHealth/insp')));
+  await assertFails(getDoc(doc(as('insp2'), 'deviceHealth/insp')));
+});

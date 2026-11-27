@@ -128,7 +128,7 @@ function usePendingCount() {
   useEffect(() => {
     if (!cloudEnabled) return;
     let on = true;
-    const run = () => list<Inspection>('inspections').then(l => { if (on) setN(pendingUploadIds(l).length); }).catch(() => {});
+    const run = () => list<Inspection>('inspections').then(l => { if (on) setN(pendingUploadIds(l).length); import('./features/device-health').then(m => m.reportHealth()).catch(() => {}); }).catch(() => {});
     // Event-driven (reading every visit with its photos every few seconds made phones sluggish).
     run(); const t = window.setInterval(run, 20000); const off = onDataChange(run);
     const h = window.setTimeout(run, 1500);
@@ -257,7 +257,7 @@ function useLocalData() {
   };
   useEffect(() => { initializeBranches().then(refresh).catch(() => { setError('تعذر تهيئة التخزين المحلي.'); setReady(true); }); }, []);
   // Re-read when records arrive from the cloud (another inspector's visit, an approval), debounced.
-  useEffect(() => { let t = 0; const off = onDataChange(k => { if (k !== 'cloud') return; window.clearTimeout(t); t = window.setTimeout(() => { refresh(); }, 250); }); return () => { off(); window.clearTimeout(t); }; }, []);
+  useEffect(() => { let t = 0; const off = onDataChange(k => { window.clearTimeout(t); t = window.setTimeout(() => { refresh(); }, k === 'cloud' ? 250 : 1200); }); /* 'pushed' too: upload badges clear */ return () => { off(); window.clearTimeout(t); }; }, []);
   return { inspections, training, branches, actions, ready, error, refresh };
 }
 
@@ -343,7 +343,7 @@ function InspectionRow({ inspection, onDelete }: { inspection: Inspection; onDel
     <Link href={href} className="visit-row" data-testid={`visit-row-${inspection.id}`}>
       <span className="branch-symbol"><Store size={18}/></span>
       <span className="visit-info"><b>{inspection.branchName || 'فرع غير محدد'}</b><small>{inspection.date.slice(0, 16)} · {inspection.inspector}</small>
-        <small className="visit-state">{inspection.number ? `${inspection.number} · ` : ''}{workflowLabel(inspection)}</small></span>
+        <small className="visit-state">{inspection.number ? `${inspection.number} · ` : ''}{workflowLabel(inspection)}{cloudEnabled && !inspection.training && pendingUploadIds([inspection]).length > 0 && <em className="not-synced" title="محفوظة على هذا الجهاز ولم تصل للسحابة بعد">لم تُرفع بعد</em>}</small></span>
       {isDraft
         ? <span className="visit-progress" aria-label={`أُجيب ${answered} من ${total}`}><b>{answered}/{total}</b><i><u style={{ width: `${total ? answered / total * 100 : 0}%` }}/></i></span>
         : inspection.imported ? <span className={`visit-score tone-${tone}`}><b className="legacy-cls">{cls ?? 'سابق'}</b><small>تقرير سابق</small></span> : <span className={`visit-score tone-${tone}`}><b>{score.score ?? '—'}%</b><small>{score.classification}</small></span>}
