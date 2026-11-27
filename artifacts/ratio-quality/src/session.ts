@@ -120,7 +120,7 @@ export { workflowLabel } from './labels';
 /* ---------- shared app configuration (config/app), editable by quality leads ---------- */
 export type RecipientList = { id: string; name: string; to: string[]; cc: string[]; branchId?: string };
 export type StandardsVersion = { version: number; ranges: Record<string, { min?: number; max?: number }>; criteria: Record<string, string> };
-export type AppConfig = { photoRequiredOnFail: number[]; recipientLists: RecipientList[]; standards?: StandardsVersion; standardsHistory?: { version: number; at: string; by: string; changes: string[] }[] };
+export type AppConfig = { photoRequiredOnFail: number[]; recipientLists: RecipientList[]; /** compliance target for branches, % */ target?: number; standards?: StandardsVersion; standardsHistory?: { version: number; at: string; by: string; changes: string[] }[] };
 const EMPTY_CONFIG: AppConfig = { photoRequiredOnFail: [], recipientLists: [] };
 let config: AppConfig = (() => { try { return { ...EMPTY_CONFIG, ...JSON.parse(localStorage.getItem('rq-config') || '{}') }; } catch { return EMPTY_CONFIG; } })();
 const cfgListeners = new Set<(c: AppConfig) => void>();
@@ -140,6 +140,7 @@ export async function saveConfig(patch: Partial<AppConfig>) {
   cfgListeners.forEach(l => l(config));
   if (fs && auth?.currentUser) { await setDoc(doc(fs, 'config', 'app'), JSON.parse(JSON.stringify(config))); await audit('config.update', 'config', 'app', patch as Record<string, unknown>); }
 }
+export const getConfigTarget = () => config.target ?? 90;
 export function useConfig() {
   const [c, setC] = useState<AppConfig>(config);
   useEffect(() => { cfgListeners.add(setC); loadConfig(); return () => { cfgListeners.delete(setC); }; }, []);

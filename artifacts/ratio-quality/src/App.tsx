@@ -31,6 +31,7 @@ import { explainScore, nameKey } from './features/text';
 const ExecutivePage = lazyRetry(() => import('./features/executive').then(m => ({ default: m.ExecutivePage })));
 const PrioritiesPage = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.PrioritiesPage })));
 const HomePriorityCard = lazyRetry(() => import('./features/priorities').then(m => ({ default: m.HomePriorityCard })));
+const HomeMonthlyCard = lazyRetry(() => import('./features/executive').then(m => ({ default: m.HomeMonthlyCard })));
 import { PhotoAnnotator } from './features/photo-annotator';
 import { VisitBrief, repeatQuestions } from './features/visit-brief';
 import { SearchPalette, openSearch } from './features/palette';
@@ -307,6 +308,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
     </div>
     {data.error && <div className="alert alert-danger">{data.error}<Button variant="outline" onClick={data.refresh}>إعادة المحاولة</Button></div>}
     {data.ready && finished.length < 3 && <TrainingCard data={data}/>}
+    {data.ready && finished.length > 0 && <Suspense fallback={null}><HomeMonthlyCard data={data}/></Suspense>}
     {data.ready && finished.length > 0 && <Suspense fallback={null}><HomePriorityCard data={data}/></Suspense>}
     <div className="metric-grid">
       <Card className="metric-card"><span className="metric-icon"><ClipboardCheck size={18}/></span><small>زيارات مكتملة</small><strong data-testid="metric-completed">{finished.length}</strong><span className="metric-caption">{cloudEnabled ? 'متزامنة مع حسابك' : 'محفوظة على هذا الجهاز'}</span></Card>

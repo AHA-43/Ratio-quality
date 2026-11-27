@@ -1018,3 +1018,13 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .bp-s-title { margin: 18px 4px 8px; color: var(--navy); }
 .bp-finding { background: #fff; border: 1px solid var(--milk-line); border-radius: 16px; padding: 12px; display: grid; gap: 6px; margin-bottom: 8px; }
 .bp-finding > b { color: var(--navy); }
+.ex-target-bar { height: 12px; border-radius: 99px; background: #ece9f7; overflow: hidden; margin: 6px 0; }
+.ex-target-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #2e8b57, #3f9b6a); }
+.ex-target-edit { display: flex; gap: 8px; margin: 4px 0 10px; } .ex-target-edit input { width: 90px; min-height: 42px; border: 1px solid var(--milk-line); border-radius: 10px; padding: 0 10px; font: inherit; }
+.ex-target-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 6px; }
+.ex-target-list a { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-radius: 12px; background: var(--milk-soft); color: var(--navy); text-decoration: none; }
+.ex-target-list em { font-style: normal; color: #c43b32; font-weight: 800; margin-inline-start: 6px; }
+.home-monthly { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: linear-gradient(135deg, #eef0fe, #fff); border-color: #d5dafc; position: relative; }
+.home-monthly .hm-ico { flex: none; width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: var(--navy); color: #fff; }
+.home-monthly > div { flex: 1; min-width: 180px; } .home-monthly b { display: block; font-size: 15px; } .home-monthly small { color: #6b6b99; }
+.home-monthly .hm-x { position: absolute; top: 6px; left: 8px; border: 0; background: transparent; font-size: 20px; color: #8a8ab0; cursor: pointer; }

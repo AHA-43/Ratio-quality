@@ -46,3 +46,11 @@ test('executive summary: averages, delta vs previous period, coverage and narrat
   assert.ok(s.narrative.some(x => x.includes('متوسط الالتزام')) && s.narrative.some(x => x.includes('تغطية الزيارات')));
   assert.equal(executiveSummary({ inspections: [], branches: [], actions: [] }, 90, NOW).narrative[0].includes('لا توجد زيارات'), true);
 });
+
+test('target standings use each branch latest scored visit', async () => {
+  const { standings } = await import('./features/targets.ts');
+  const q = { id: 1, title: 'x', section: 's', severity: 'Major', criterion: '' };
+  const v = (id: string, b: string, date: string, pass: boolean) => ({ id, branchId: b, branchName: b, status: 'finalized', date, questionSnapshot: [q], answers: { 1: { value: pass ? 'pass' : 'fail', observation: '', recommendation: '', recurring: false, severity: 'Major', attachments: [] } } });
+  const r = standings({ inspections: [v('1', 'A', '2026-10-01 10:00', false), v('2', 'A', '2026-11-01 10:00', true), v('3', 'B', '2026-11-02 10:00', false)] as never, branches: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }] as never }, 90);
+  assert.equal(r.total, 2); assert.equal(r.met, 1); assert.equal(r.below[0].branch.id, 'B');
+});

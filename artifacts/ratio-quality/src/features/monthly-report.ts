@@ -1,6 +1,7 @@
 // One-button monthly management report (PowerPoint, native editable charts), built from the saved records.
 import type { ActionItem, Branch, Inspection } from '../data.ts';
 import { executiveSummary, focusInsights, monthRange } from './insights.ts';
+import { DEFAULT_TARGET, standings } from './targets.ts';
 import { bar, C, card, chip, chipRow, CLS, contentSlide, eyebrow, FONT, footer, H, mark, scoreColor, scoreRing, SEV as SEV_K, short, T, type Pptx } from './deck-kit.ts';
 
 type D = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] };
@@ -26,7 +27,7 @@ function facades(d: D): Map<string, string> {
   return new Map([...m].map(([k, v]) => [k, v.data]));
 }
 
-export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | null) {
+export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | null, target = DEFAULT_TARGET) {
   const PptxGenJS = (await import('pptxgenjs')).default;
   const range = monthRange(ym);
   const s = executiveSummary(d, 31, range.to - 1, range);
@@ -36,6 +37,7 @@ export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | nu
   const foot = `ريشيو · إدارة الجودة · التقرير الشهري · ${label}`;
   const pct = (n: number | null) => n === null ? '—' : `${n}%`;
   const fac = facades(d);
+  const st = standings(d, target, range.to);
   const visitedIds = [...new Set(d.inspections.filter(i => { const t = Date.parse(i.date.replace(' ', 'T')); return i.status === 'finalized' && t >= range.from && t < range.to; }).map(i => i.branchId))];
 
   /* 1 ─ cover: up to three facades of branches visited this month */
@@ -54,7 +56,7 @@ export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | nu
   eyebrow(cv, 'إدارة الجودة', tx, 1.5, tw);
   T(cv, 'التقرير الشهري\nلجودة الفروع', { x: tx, y: 1.85, w: tw, h: 1.35, fontSize: 32, bold: true, color: C.white, valign: 'middle' });
   T(cv, label, { x: tx, y: 3.25, w: tw, h: 0.45, fontSize: 20, bold: true, color: C.corn });
-  chipRow(p, cv, 9.4, 3.95, tx, [[`${s.visits} زيارة`, C.white, C.navy2], [`${s.branchesVisited} فرع`, C.white, C.navy2], [`متوسط ${pct(s.avg)}`, C.navy, C.white]], 11);
+  chipRow(p, cv, 9.4, 3.95, tx, [[`${s.visits} زيارة`, C.white, C.navy2], [`${s.branchesVisited} فرع`, C.white, C.navy2], [`متوسط ${pct(s.avg)}`, C.navy, C.white], ...(st.total ? [[`حققت الهدف ${st.met}/${st.total}`, C.navy, C.corn] as [string, string, string]] : [])], 11);
   footer(p, cv, 'ريشيو للقهوة المختصة', true);
 
   /* 2 ─ executive summary */
@@ -101,7 +103,8 @@ export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | nu
       T(rk, short(r.branch.name, 30), { x: x + 1.0, y: y + 0.07, w: img ? 2.5 : 3.15, h: 0.4, fontSize: 11, bold: true, color: C.navy, valign: 'middle' });
       T(rk, `${Math.round(r.score)}%`, { x: x + 0.12, y: y + 0.07, w: 0.85, h: 0.4, fontSize: 14, bold: true, color: scoreColor(r.score), align: 'left', valign: 'middle' }); });
   };
-  col('الأفضل أداءً', C.green, s.best, 5.1); col('تحتاج متابعة (أقل من 90%)', C.red, s.worst, 0.6);
+  col('الأفضل أداءً', C.green, s.best, 5.1); col(`تحتاج متابعة (أقل من ${target}%)`, C.red, st.below.map(r => ({ branch: r.branch, score: r.score })), 0.6);
+  if (st.total) T(rk, `حققت ${st.met} من ${st.total} فرعاً هدف الالتزام ${target}% (حسب آخر زيارة لكل فرع)`, { x: 0.6, y: 4.95, w: 8.8, h: 0.25, fontSize: 9.5, color: C.muted });
 
   /* 6 ─ top failing items */
   const tf = contentSlide(p, 'نقاط التركيز', 'أكثر البنود فشلاً هذا الشهر', foot);
@@ -136,13 +139,14 @@ export async function buildMonthlyDeck(d: D, ym: string, logoWhite?: string | nu
 export const monthlyFileName = (ym: string) => `Ratio-monthly-${ym}.pptx`;
 
 /** Browser entry: builds the deck with the brand logo and returns a downloadable blob. */
-export async function exportMonthlyReport(d: D, ym: string): Promise<{ blob: Blob; name: string }> {
+export async function exportMonthlyReport(d: D, ym: string, target?: number): Promise<{ blob: Blob; name: string }> {
   const { toDataUrl } = await import('./exports');
   const { getMedia } = await import('../data');
   // facades are stored apart from the visit records: load them (latest per branch only)
   const latest = new Map<string, Inspection>();
   for (const i of d.inspections) if (i.facade?.id) { const c = latest.get(i.branchId); if (!c || i.date > c.date) latest.set(i.branchId, i); }
   const withFacades = await Promise.all(d.inspections.map(async i => latest.get(i.branchId) === i && i.facade ? { ...i, facade: { ...i.facade, data: await getMedia(i.facade).catch(() => '') } } : i));
-  const deck = await buildMonthlyDeck({ ...d, inspections: withFacades }, ym, await toDataUrl('/brand/logo-ar-white.png'));
+  const { getConfigTarget } = await import('../session');
+  const deck = await buildMonthlyDeck({ ...d, inspections: withFacades }, ym, await toDataUrl('/brand/logo-ar-white.png'), target ?? getConfigTarget());
   return { blob: await deck.write({ outputType: 'blob' }) as Blob, name: monthlyFileName(ym) };
 }

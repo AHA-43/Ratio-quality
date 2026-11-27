@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
-import { ArrowLeft, Printer, TrendingDown, TrendingUp } from 'lucide-react';
+import { ArrowLeft, CalendarCheck, Printer, TrendingDown, TrendingUp } from 'lucide-react';
 import type { ActionItem, Branch, Inspection } from '../data';
 import { CountUp } from './brand-motion';
-import { audit } from '../session';
+import { audit, isQualityLead, saveConfig, useConfig, useProfile } from '../session';
+import { cloudEnabled } from '../cloud';
+import { DEFAULT_TARGET, standings } from './targets';
 import { availableMonths, executiveSummary } from './insights';
 import { monthLabel } from './monthly-report';
 
@@ -28,6 +30,39 @@ function Trend({ data }: { data: { key: string; avg: number; n: number }[] }) {
     <path d={`${line} L${pts[pts.length - 1][0]},${H - bot} L${pts[0][0]},${H - bot} Z`} fill="url(#exg)"/>
     <path d={line} fill="none" stroke="#07014f" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="ex-line"/>
     {pts.map(([a, b], i) => <g key={data[i].key}><circle cx={a} cy={b} r="4.5" fill="#fff" stroke="#07014f" strokeWidth="2.4"/><text x={a} y={b - 10} textAnchor="middle" fontSize="11" fontWeight="700" fill="#07014f">{Math.round(data[i].avg)}</text><text x={a} y={H - 10} textAnchor="middle" fontSize="10.5" fill="#55558a">{monthName(data[i].key)}</text></g>)}</svg>;
+}
+
+function TargetCard({ data }: { data: D }) {
+  const cfg = useConfig(); const me = useProfile(); const lead = isQualityLead(me) || !cloudEnabled;
+  const target = cfg.target ?? DEFAULT_TARGET;
+  const st = useMemo(() => standings(data, target), [data.inspections, data.branches, target]);
+  const [edit, setEdit] = useState(false); const [val, setVal] = useState(String(target));
+  if (!st.total) return null;
+  const pct = Math.round(st.met / st.total * 100);
+  return <section className="surface-card ex-target">
+    <div className="card-heading"><div><span className="eyebrow">هدف الالتزام</span><h2>{st.met} من {st.total} فرعاً حققت هدف <bdi>{target}%</bdi></h2></div>
+      {lead && !edit && <button type="button" className="text-link no-print" onClick={() => { setVal(String(target)); setEdit(true); }}>تعديل الهدف</button>}</div>
+    {edit && <div className="ex-target-edit no-print"><input type="number" min={50} max={100} value={val} onChange={e => setVal(e.target.value)} aria-label="الهدف %"/><button type="button" className="button button-primary" onClick={async () => { const n = Math.round(Number(val)); if (n >= 50 && n <= 100) { await saveConfig({ target: n }); setEdit(false); } }}>حفظ</button><button type="button" className="button button-outline" onClick={() => setEdit(false)}>إلغاء</button></div>}
+    <div className="ex-target-bar"><i style={{ width: `${Math.max(2, pct)}%` }}/></div>
+    <small className="small-muted">حسب آخر زيارة مقيّمة لكل فرع · {pct}% من الفروع المزارة</small>
+    {st.below.length > 0 && <ul className="ex-target-list">{st.below.slice(0, 6).map(r => <li key={r.branch.id}><Link href={`/branches/${r.branch.id}`}><b>{r.branch.name}</b><span><bdi>{Math.round(r.score)}%</bdi> <em>−{Math.round(r.gap)}</em></span></Link></li>)}</ul>}
+  </section>;
+}
+
+/** Home reminder for quality leads in the first days of a month: last month's report is ready. */
+export function HomeMonthlyCard({ data }: { data: D }) {
+  const me = useProfile(); const lead = isQualityLead(me) || !cloudEnabled;
+  const now = new Date(); const prev = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+  const ym = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
+  const key = `rq-monthly-seen-${ym}`;
+  const [hidden, setHidden] = useState(() => { try { return localStorage.getItem(key) === '1'; } catch { return false; } });
+  const [busy, setBusy] = useState(false);
+  const has = useMemo(() => data.inspections.some(i => i.status === 'finalized' && i.date.startsWith(ym)), [data.inspections, ym]);
+  if (!lead || hidden || now.getDate() > 10 || !has) return null;
+  const hide = () => { try { localStorage.setItem(key, '1'); } catch { /* ignore */ } setHidden(true); };
+  const make = async () => { setBusy(true); try { const [{ exportMonthlyReport }, { deliver }] = await Promise.all([import('./monthly-report'), import('./exports')]); const out = await exportMonthlyReport(data, ym); await deliver(out.blob, out.name, 'share' in navigator); audit('report.monthly.export', 'reports', ym, { from: 'home' }); hide(); } catch (e) { console.error(e); } setBusy(false); };
+  return <section className="surface-card home-monthly"><span className="hm-ico"><CalendarCheck size={20}/></span><div><b>التقرير الشهري لـ{monthLabel(ym)} جاهز</b><small>عرض PowerPoint للإدارة بضغطة واحدة</small></div>
+    <button type="button" className="button button-primary" disabled={busy} onClick={make}>{busy ? 'جارٍ التجهيز…' : 'تجهيز التقرير'}</button><button type="button" className="hm-x" onClick={hide} aria-label="إخفاء">×</button></section>;
 }
 
 export function ExecutivePage({ data }: { data: D }) {
@@ -55,6 +90,7 @@ export function ExecutivePage({ data }: { data: D }) {
 
     <section className="surface-card ex-brief"><div className="card-heading"><div><span className="eyebrow">ملخص مكتوب تلقائياً</span><h2>الخلاصة للإدارة</h2></div></div><ul>{s.narrative.map((t, i) => <li key={i}>{t}</li>)}</ul></section>
 
+    <TargetCard data={data}/>
     <section className="surface-card ex-monthly no-print"><div><span className="eyebrow">جاهز للإرسال للإدارة</span><h2>التقرير الشهري</h2><p>عرض PowerPoint من 8 شرائح: الخلاصة، التصنيفات، الاتجاه، الأقسام، الفروع، أكثر البنود فشلاً، الإجراءات، والتوصيات.</p></div>
       {months.length ? <div className="ex-monthly-act"><label className="field"><span>الشهر</span><select value={ym} onChange={e => setMonth(e.target.value)} data-testid="select-month">{months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}</select></label>
         <button type="button" className="button button-primary" disabled={busy} onClick={() => makeMonthly(false)} data-testid="button-monthly">{busy ? 'جارٍ الإنشاء…' : 'تنزيل التقرير'}</button>{canShare && <button type="button" className="button button-soft" disabled={busy} onClick={() => makeMonthly(true)}>مشاركة</button>}</div> : <p className="pr-empty">يظهر هنا بعد اعتماد أول زيارة.</p>}
