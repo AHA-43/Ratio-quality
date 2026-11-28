@@ -12,7 +12,8 @@ import { CalendarCheck, GraduationCap, PenLine, Activity, Archive, Camera, MapPi
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
-import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
+import { allocateInspectionNumber, applyStandards, audit, canApprove, checklistVersionLabel, getConfigTarget, isQualityLead, looksAutoNamed, publishStandards, useConfig, useProfile, workflowLabel } from './session';
+import { standings } from './features/targets';
 import { ExportBar, MailHistory } from './features/ExportBar';
 import { FacadeCapture, facadeFor } from './features/facade';
 import { ApprovalAlert } from './features/approval-alert';
@@ -235,6 +236,25 @@ function AnnotatorFor({ att, onCancel, onSave }: { att: Attachment; onCancel: ()
   const src = useMediaData(att);
   return src ? <PhotoAnnotator src={src} onCancel={onCancel} onSave={onSave}/> : null;
 }
+/** Home: a short look at branches (best, needing attention, not yet visited) instead of the full list. */
+function HomeBranchSnapshot({ data }: { data: ReturnType<typeof useLocalData> }) {
+  const snap = useMemo(() => {
+    const st = standings(data, getConfigTarget());
+    const ranked = [...st.rows].sort((a, b) => b.score - a.score);
+    const active = data.branches.filter(b => !b.archived && !b.demo).length;
+    return { best: ranked.slice(0, 3), worst: ranked.length > 3 ? ranked.slice(-3).reverse() : [], visited: ranked.length, never: Math.max(0, active - new Set(data.inspections.filter(i => i.status === 'finalized' && !i.training).map(i => i.branchId)).size), target: st.target, met: st.met };
+  }, [data.inspections, data.branches]);
+  if (!snap.visited) return null;
+  const row = (r: (typeof snap.best)[number]) => <Link key={r.branch.id} href={`/branches/${r.branch.id}`} className="hb-row"><span className={`hb-score ${r.score >= 90 ? 'good' : r.score >= 80 ? 'ok' : r.score >= 70 ? 'warn' : 'bad'}`}>{Math.round(r.score)}</span><span className="hb-name"><b>{r.branch.name}</b><small>آخر زيارة {r.date}</small></span></Link>;
+  return <Card className="home-branches">
+    <div className="card-heading"><div><span className="eyebrow">نظرة على الفروع</span><h2>{snap.met} من {snap.visited} فرعاً عند الهدف <bdi>{snap.target}%</bdi></h2></div><Link href="/branches" className="text-link">كل الفروع <ArrowLeft size={15}/></Link></div>
+    <div className="hb-cols">
+      <div><small className="hb-cap good">الأفضل</small>{snap.best.map(row)}</div>
+      {snap.worst.length > 0 && <div><small className="hb-cap bad">تحتاج متابعة</small>{snap.worst.map(row)}</div>}
+    </div>
+    {snap.never > 0 && <Link href="/priorities?tab=plan" className="hb-never">{snap.never} فرع لم يُزر بعد — افتح خطة الأسبوع <ArrowLeft size={14}/></Link>}
+  </Card>;
+}
 function Card({ children, className = '' }: { children: ReactNode; className?: string }) { return <section className={`surface-card ${className}`}>{children}</section>; }
 
 function useLocalData() {
@@ -324,13 +344,7 @@ function HomePage({ data }: { data: ReturnType<typeof useLocalData> }) {
         {openActions.length ? <div className="mini-actions">{openActions.slice(0, 4).map(a => <div className="mini-action" key={a.id}><span className={`severity-dot ${a.severity.toLowerCase()}`}/><div><b>{a.title}</b><small>{a.branchName} · الاستحقاق {a.dueDate || 'غير محدد'}</small></div></div>)}</div> : <div className="quiet-empty"><CheckCircle2 size={22}/><span>لا توجد إجراءات مفتوحة حالياً</span></div>}
       </Card>
     </div>
-    <Card className="branch-performance"><div className="card-heading"><div><span className="eyebrow">نظرة على الفروع</span><h2>آخر نتائج الالتزام</h2></div><Link href="/settings" className="text-link">إدارة الفروع <ArrowLeft size={15}/></Link></div><div className="branch-performance-grid">{data.branches.filter(b => !b.archived).map(branch => {
-      const completed = data.inspections.filter(i => i.branchId === branch.id && i.status === 'finalized').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      const result = completed[0] ? calculateScore(completed[0].questionSnapshot, completed[0].answers) : undefined;
-      const open = data.actions.filter(a => a.branchName === branch.name && a.status !== 'مغلق').length;
-      return <div className="branch-performance-item" key={branch.id}><span className="branch-symbol"><Store size={17}/></span><div><b>{branch.name}{branch.demo && <i>مثال</i>}</b><small>{completed.length} زيارات مكتملة · {open} إجراءات مفتوحة</small></div><strong>{result?.score === null || result?.score === undefined ? '—' : `${result.score}%`}<small>{result?.classification || 'لا توجد نتيجة بعد'}</small></strong></div>;
-    })}</div></Card>
-    <div className="footnote"><Info size={15}/> لا توجد بيانات تجريبية للزيارات. الفروع الثلاثة المبدئية موسومة كأمثلة ويمكن تعديلها.</div>
+    <HomeBranchSnapshot data={data}/>
   </div>;
 }
 function InspectionRow({ inspection, onDelete }: { inspection: Inspection; onDelete?: (i: Inspection) => void }) {

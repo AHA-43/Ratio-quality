@@ -54,3 +54,12 @@ test('target standings use each branch latest scored visit', async () => {
   const r = standings({ inspections: [v('1', 'A', '2026-10-01 10:00', false), v('2', 'A', '2026-11-01 10:00', true), v('3', 'B', '2026-11-02 10:00', false)] as never, branches: [{ id: 'A', name: 'A' }, { id: 'B', name: 'B' }, { id: 'C', name: 'C' }] as never }, 90);
   assert.equal(r.total, 2); assert.equal(r.met, 1); assert.equal(r.below[0].branch.id, 'B');
 });
+
+test('week plan prefers branches near where recent visits happened', () => {
+  const B = (id: string, lat: number, lng: number) => ({ id, name: id, city: '', manager: '', archived: false, demo: false, lat, lng });
+  const near1 = B('near1', 25.38, 49.58), near2 = B('near2', 25.40, 49.60), far1 = B('far1', 18.22, 42.50), far2 = B('far2', 18.20, 42.52), home = B('home', 25.39, 49.59), home2 = B('home2', 25.37, 49.57);
+  const v = (id: string, b: string, date: string) => ({ id, branchId: b, branchName: b, status: 'finalized', date, questionSnapshot: [], answers: {} });
+  const geo: Geo = { pos: (b: { lat?: number; lng?: number }) => ({ lat: b.lat!, lng: b.lng! }), city: () => '', dist: (a, b) => Math.hypot(a.lat - b.lat, a.lng - b.lng) * 111 } as never;
+  const plan = planWeek({ inspections: [v('1', 'home', '2026-11-20 10:00'), v('2', 'home2', '2026-11-21 10:00')] as never, branches: [far1, far2, near1, near2, home, home2] as never, actions: [] }, { perDay: 2, days: 1, geo }, Date.parse('2026-11-28T10:00:00Z'));
+  assert.deepEqual(plan[0].items.map(i => i.branch.id).sort(), ['near1', 'near2']);
+});

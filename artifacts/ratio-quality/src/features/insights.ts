@@ -96,8 +96,15 @@ export function workDays(from: Date, n: number) {
 /** Highest-priority branches first; each day is filled with the branches nearest to that day's anchor so trips stay short. */
 export function planWeek(input: { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[] }, opts: { perDay?: number; days?: number; from?: Date; geo: Geo }, now = Date.now()): PlanDay[] {
   const perDay = opts.perDay ?? 2, days = opts.days ?? 5;
+  // Home base = where recent visits happened (median of their branch positions): far-away branches with
+  // the same urgency come after nearby ones, so the plan is drivable.
+  const recent = input.inspections.filter(i => !i.training && i.status === 'finalized').sort((a, b) => b.date.localeCompare(a.date)).slice(0, 20)
+    .map(i => { const b = input.branches.find(x => x.id === i.branchId); return b ? opts.geo.pos(b) : null; }).filter((p): p is NonNullable<typeof p> => Boolean(p));
+  const med = (v: number[]) => { const s = [...v].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+  const base = recent.length >= 2 ? { lat: med(recent.map(p => p.lat)), lng: med(recent.map(p => p.lng)) } : null;
+  const effective = (b: Branch, p: number) => { if (!base) return p; const bp = opts.geo.pos(b); return bp ? p - Math.min(40, opts.geo.dist(base, bp) / 25) : p - 20; };
   const scored = input.branches.filter(b => !b.archived && !b.demo)
-    .map(b => ({ b, ...branchPriority(b, input, now) })).filter(x => x.priority >= 15).sort((a, b) => b.priority - a.priority).slice(0, perDay * days);
+    .map(b => ({ b, ...branchPriority(b, input, now) })).filter(x => x.priority >= 15).map(x => ({ ...x, eff: effective(x.b, x.priority) })).sort((a, b) => b.eff - a.eff).slice(0, perDay * days);
   const pool = [...scored]; const out: PlanDay[] = [];
   const dates = workDays(opts.from ?? new Date(now), days);
   const { pos: posOf, city: cityOf, dist: distanceKm } = opts.geo;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ago, listHealth, type Health } from './device-health';
-import { Link, useRoute } from 'wouter';
+import { Link, useLocation, useRoute } from 'wouter';
 import type { ActionItem, Barista, BaristaEval, Branch, Equipment, Inspection, Question } from '../data';
 import { list, newId, put, QUESTIONS } from '../data';
 import { calculateScore } from '../scoring';
@@ -9,6 +9,7 @@ import { adminCreateUser, generatePassword, audit, canApprove, isQualityLead, is
 import { cloudEnabled } from '../cloud';
 import { type BranchScore } from './position';
 import { SaudiMap } from './SaudiMap';
+import { regionOf, shortRegion } from './geo';
 
 export type AppData = { inspections: Inspection[]; branches: Branch[]; actions: ActionItem[]; refresh: () => Promise<void> };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -372,8 +373,12 @@ const classTone = (c: string | null) => c === 'ممتاز' ? 'good' : c === 'ج�
 export function BranchesPage({ data }: { data: AppData }) {
   const [q, setQ] = useState('');
   const [sort, setSort] = useState<'name' | 'score' | 'due'>('score');
+  const [region, setRegion] = useState(''); const [shown, setShown] = useState(20);
+  const [, go] = useLocation();
   const n = q.trim().toLowerCase();
-  const rows = data.branches.filter(b => !b.archived && (!n || b.name.toLowerCase().includes(n) || (b.code ?? '').toLowerCase().includes(n))).map(b => {
+  const regionCounts = useMemo(() => { const m = new Map<string, number>(); for (const b of data.branches) if (!b.archived) { const r = regionOf(b.name); m.set(r, (m.get(r) ?? 0) + 1); } return [...m].sort((a, b) => b[1] - a[1]); }, [data.branches]);
+  useEffect(() => { setShown(20); }, [q, region, sort]);
+  const rows = data.branches.filter(b => !b.archived && (!region || regionOf(b.name) === region) && (!n || b.name.toLowerCase().includes(n) || (b.code ?? '').toLowerCase().includes(n))).map(b => {
     const done = data.inspections.filter(i => i.branchId === b.id && i.status === 'finalized').sort((x, y) => y.date.localeCompare(x.date));
     const last = done[0] ? calculateScore(done[0].questionSnapshot, done[0].answers) : null;
     const open = data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === b.id || a.branchName === b.name));
@@ -382,14 +387,16 @@ export function BranchesPage({ data }: { data: AppData }) {
   }).sort((x, y) => sort === 'name' ? x.b.name.localeCompare(y.b.name, 'ar') : sort === 'due' ? (y.daysSince ?? 9999) - (x.daysSince ?? 9999) : (x.last?.score ?? 101) - (y.last?.score ?? 101));
   return <div className="page-content">
     <Title eyebrow="الفروع" title="أداء الفروع" detail={`${rows.length} فرعاً فعّالاً · رتّب لترى الأضعف أداءً أو الأطول بلا زيارة.`}/>
-    <SaudiMap branches={data.branches.filter(b => !b.archived)} scores={Object.fromEntries(rows.map(r => [r.b.id, { score: r.last?.score ?? null, cls: r.last?.classification ?? null }])) as BranchScore} onSelect={id => { window.location.assign(`/branches/${id}`); }}/>
+    <SaudiMap branches={data.branches.filter(b => !b.archived)} scores={Object.fromEntries(rows.map(r => [r.b.id, { score: r.last?.score ?? null, cls: r.last?.classification ?? null }])) as BranchScore} onSelect={id => { go(`/branches/${id}`); }}/>
     <div className="branch-tools"><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالاسم أو الكود"/>
       <div className="segmented">{([['score', 'الأضعف أولاً'], ['due', 'الأطول بلا زيارة'], ['name', 'أبجدياً']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}</div></div>
-    <div className="branch-grid">{rows.slice(0, 150).map(r => <Link key={r.b.id} href={`/branches/${r.b.id}`} className="branch-tile">
+    <div className="br-regions">{[['', data.branches.filter(b => !b.archived).length] as [string, number], ...regionCounts].map(([r, c]) => <button key={r || 'all'} type="button" className={region === r ? 'on' : ''} onClick={() => setRegion(r)}>{r ? shortRegion(r) : 'كل المناطق'}<span>{c}</span></button>)}</div>
+    <div className="branch-grid">{rows.slice(0, shown).map(r => <Link key={r.b.id} href={`/branches/${r.b.id}`} className="branch-tile">
       <span className={`score-dot ${classTone(r.last?.classification ?? null)}`}>{r.last?.score ?? '—'}{r.last?.score != null && <small>%</small>}</span>
       <span className="bt-main"><b>{r.b.name}</b><small>{r.b.code ?? '—'} · {r.visits ? `${r.visits} زيارة · آخرها قبل ${r.daysSince} يوم` : 'لم يُزر بعد'}</small></span>
       {r.overdue > 0 ? <span className="bt-flag red">{r.overdue} متأخر</span> : r.open > 0 ? <span className="bt-flag">{r.open} مفتوح</span> : null}
     </Link>)}</div>
+    {rows.length > shown && <button type="button" className="button button-outline br-more" onClick={() => setShown(v => v + 30)}>عرض المزيد ({rows.length - shown} فرعاً)</button>}
   </div>;
 }
 
