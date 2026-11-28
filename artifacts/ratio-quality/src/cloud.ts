@@ -1,7 +1,7 @@
 // Thin Firebase layer. The app keeps working fully offline on Dexie; when Firebase is configured
 // (VITE_FIREBASE_* env vars) users must sign in and data is mirrored to Firestore + Storage.
 import { initializeApp, deleteApp } from 'firebase/app';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, type User } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, sendPasswordResetEmail, signInWithEmailAndPassword, signOut, connectAuthEmulator, createUserWithEmailAndPassword, updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, type User } from 'firebase/auth';
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, connectFirestoreEmulator, doc, setDoc, getDoc, getDocs, collection, deleteDoc, runTransaction, onSnapshot } from 'firebase/firestore';
 import { getStorage, ref, uploadString, getDownloadURL, connectStorageEmulator } from 'firebase/storage';
 
@@ -24,6 +24,12 @@ if (app && env.VITE_USE_EMULATORS === 'true') {
 export const watchUser = (cb: (u: User | null) => void) => auth ? onAuthStateChanged(auth, cb) : (cb(null), () => {});
 export const signIn = (email: string, password: string) => signInWithEmailAndPassword(auth!, email, password);
 export const signOutUser = () => signOut(auth!);
+/** Sends Firebase's password-reset email (Arabic). The result never reveals whether the address has an account. */
+export async function resetPassword(email: string) {
+  if (!auth) throw new Error('cloud disabled');
+  auth.languageCode = 'ar';
+  try { await sendPasswordResetEmail(auth, email.trim()); } catch (e) { const code = (e as { code?: string }).code ?? ''; if (code !== 'auth/user-not-found' && code !== 'auth/invalid-email') throw e; }
+}
 /** Creates an account WITHOUT touching the admin's own session: a second, throw-away Firebase app does the sign-up. */
 export async function createAccountAsAdmin(email: string, password: string, name: string): Promise<string> {
   if (!app) throw new Error('cloud disabled');

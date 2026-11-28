@@ -39,6 +39,12 @@ await step('wrong password is rejected with a clear message', async () => {
   await A.p.locator('input[type=email]').fill('inspector@test.local'); await A.p.locator('input[type=password]').fill('wrong');
   await A.p.getByRole('button', { name: 'دخول' }).click(); await A.p.waitForSelector('.login-card .err');
 });
+await step('forgot password: asks for the email and confirms without revealing whether it exists', async () => {
+  const X = await newDevice(); await X.p.goto(APP + '/'); await X.p.waitForSelector('.login-card');
+  await X.p.getByTestId('link-forgot').click(); await X.p.getByTestId('input-reset-email').fill('nobody-here@test.local');
+  await X.p.getByTestId('button-reset-send').click(); await X.p.waitForSelector('[data-testid=reset-sent]', { timeout: 15000 });
+  await X.c.close();
+});
 await step('inspector signs in; profile auto-created as inspector', async () => {
   await login(A.p, 'inspector@test.local');
   const u = await fsGet(`users/${inspUid}`);
@@ -239,6 +245,13 @@ await step('branch manager: sees own approved report, answers an action with pro
   assert.equal(val(a.fields.status), 'بانتظار التحقق');
   assert.match(val(a.fields.evidence.arrayValue.values[0].mapValue.fields.storagePath), /^photos\//);
   await C.p.getByRole('tab', { name: 'تقارير الزيارات' }).click(); await C.p.waitForSelector('.bp-report', { timeout: 15000 });
+  // a new action arrives while the manager has the portal open: alert + 'new' badge (no reload needed)
+  await fetch(`${FS}/actions/e2e-act2`, { method: 'PATCH', headers: admin, body: JSON.stringify({ fields: { id: { stringValue: 'e2e-act2' }, title: { stringValue: 'إجراء جديد للاختبار — فرع' }, description: { stringValue: 'وصف' }, recommendation: { stringValue: 'تنفيذ' }, status: { stringValue: 'مفتوح' }, severity: { stringValue: 'Minor' }, branchId: { stringValue: branchId }, branchName: { stringValue: 'فرع' }, inspectionId: { stringValue: inspectionId }, questionId: { integerValue: 7 }, dueDate: { stringValue: '2030-01-01' }, responsible: { stringValue: '' } } }) });
+  await C.p.getByRole('tab', { name: 'الإجراءات التصحيحية' }).click();
+  await C.p.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await C.p.waitForSelector('.bp-alert', { timeout: 15000 });
+  assert.match(await C.p.locator('.bp-alert').innerText(), /إجراء جديد/);
+  await C.p.waitForSelector('.bp-action.fresh', { timeout: 5000 });
   assert.deepEqual(C.errs, []);
   await C.c.close();
   // the quality manager's device receives the branch reply and verifies it
@@ -249,6 +262,20 @@ await step('branch manager: sees own approved report, answers an action with pro
   await B.p.getByRole('button', { name: 'تحقق وأغلق ✓' }).first().click();
   let st = ''; for (let k = 0; k < 15 && st !== 'مغلق'; k++) { await new Promise(r => setTimeout(r, 1000)); st = val((await fsGet('actions/e2e-act')).fields.status); }
   assert.equal(st, 'مغلق');
+});
+await step('manager device: branch file, comparison, pull-to-refresh and the sync chip work', async () => {
+  const insp = await fsGet(`inspections/${inspectionId}`); const branchId = val(insp.fields.branchId);
+  await B.p.goto(APP + `/branches/${encodeURIComponent(branchId)}`); await B.p.waitForSelector('.bprof', { timeout: 15000 });
+  assert.ok(await B.p.locator('.bp-hero2').count(), 'branch hero'); assert.ok(await B.p.locator('.loc-state').count(), 'location card');
+  await B.p.goto(APP + `/compare?a=${encodeURIComponent(branchId)}`); await B.p.waitForSelector('.cmp-pick', { timeout: 15000 });
+  await B.p.goto(APP + '/'); await B.p.waitForSelector('.today', { timeout: 15000 }); await B.p.waitForTimeout(800);
+  const cdp = await B.c.newCDPSession(B.p); await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+  const touch = (type, y) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x: 200, y }] });
+  await touch('touchStart', 140); for (let y = 140; y <= 420; y += 28) await touch('touchMove', y);
+  await B.p.waitForSelector('.ptr', { timeout: 4000 }); await touch('touchEnd', 420);
+  await B.p.waitForSelector('.ptr.busy, .ptr.done', { timeout: 6000 });
+  await B.p.waitForSelector('.ptr.done', { timeout: 15000 });
+  await B.p.getByTestId('button-sync').click(); await B.p.waitForFunction(() => /تم التحديث|جارٍ التحديث/.test(document.querySelector('[data-testid=button-sync]')?.textContent ?? ''), null, { timeout: 8000 });
 });
 await step('no page errors on either device', async () => { assert.deepEqual([...A.errs, ...B.errs], []); });
 await step('enforced Content-Security-Policy: nothing was blocked', async () => {

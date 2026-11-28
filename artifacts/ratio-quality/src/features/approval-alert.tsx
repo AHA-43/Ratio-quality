@@ -10,7 +10,7 @@ const SEEN = 'rq-seen-submitted';
 const readSeen = (): Set<string> | null => { try { const v = localStorage.getItem(SEEN); return v ? new Set(JSON.parse(v)) : null; } catch { return null; } };
 const writeSeen = (s: Set<string>) => { try { localStorage.setItem(SEEN, JSON.stringify([...s].slice(-500))); } catch { /* ignore */ } };
 
-function chime() {
+export function chime() {
   try {
     const Ctx = (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext); if (!Ctx) return;
     const ctx = new Ctx(); const t = ctx.currentTime;
@@ -22,7 +22,7 @@ function chime() {
     window.setTimeout(() => ctx.close().catch(() => {}), 900);
   } catch { /* audio blocked until the first tap: fine */ }
 }
-async function systemNotify(title: string, body: string, url: string) {
+export async function systemNotify(title: string, body: string, url: string) {
   try {
     if (!('Notification' in window) || Notification.permission !== 'granted') return;
     const reg = await navigator.serviceWorker?.getRegistration();

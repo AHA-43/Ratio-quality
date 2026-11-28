@@ -8,7 +8,7 @@ import { Route, Switch, useLocation, useRoute, Router as WouterRouter, Link } fr
 import { useForm } from 'react-hook-form';
 import { Form } from '@/components/ui/form';
 import { createPortal } from 'react-dom';
-import { CalendarCheck, GraduationCap, PenLine, Undo2, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
+import { RefreshCw, CalendarCheck, GraduationCap, PenLine, Undo2, Activity, Archive, Camera, MapPin, NotebookPen, SkipForward, ArrowDownToLine, ArrowLeft, ArrowRight, Check, CheckCircle2, ChevronLeft, CircleHelp, ClipboardCheck, Clock3, Coffee, FileCheck2, FileText, Gauge, ImagePlus, Info, LayoutDashboard, ListChecks, MoreHorizontal, Pencil, Plus, Printer, Search, Settings, ShieldCheck, SlidersHorizontal, Store, Upload, X } from 'lucide-react';
 import { AuthGate } from './AuthGate';
 import { cloudEnabled, signOutUser } from './cloud';
 import { TASTING_SCORE_IDS } from './checklist';
@@ -21,6 +21,8 @@ import { HeadIcon } from './features/page-icons';
 import { sessionGreeting } from './features/greeting';
 import { CloudUsageCard } from './features/cloud-usage';
 import { MediaImg, MediaVideo, useMedia as useMediaData } from './features/media';
+import { SectionOverview } from './features/section-overview';
+import { PullToRefresh } from './features/pull-refresh';
 import { appVersion, buildDiagnostics, clearErrors, getErrors } from './errorlog';
 import { lazyRetry, requestPersistence, useStorageWarning, useUpdateAvailable } from './reliability';
 import { useMyPosition, type BranchScore } from './features/position';
@@ -44,10 +46,11 @@ import { TRAINING_HINTS, trainingQuestions } from './features/training';
 import { BeforeAfter } from './features/before-after';
 import { SubmitCelebration } from './features/celebration';
 import { QuickPhrases, SectionProgress, useKeyboardOpen, useMedia, useWakeLock } from './features/field-bar';
-import { branchPos, distanceKm, fmtKm } from './features/geo';
+import { branchPos, distanceKm, fmtKm, registerBranchCoords } from './features/geo';
 import { isOverdue } from './features/overdue';
 const BranchesPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BranchesPage })));
-const BranchProfile = lazyRetry(() => import('./features/pages').then(m => ({ default: m.BranchProfile })));
+const BranchProfile = lazyRetry(() => import('./features/branch-profile'));
+const ComparePage = lazyRetry(() => import('./features/compare'));
 const ConfigPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.ConfigPage })));
 const ActionsBoard = lazyRetry(() => import('./features/pages').then(m => ({ default: m.ActionsBoard })));
 const AnalyticsPage = lazyRetry(() => import('./features/pages').then(m => ({ default: m.AnalyticsPage })));
@@ -162,6 +165,8 @@ function AppShell({ children }: { children: ReactNode }) {
   }, []);
   // Retry unsent work while waiting (flaky branch Wi-Fi): every 45s, only when something is pending.
   useEffect(() => { if (!online || !cloudEnabled || !pendingUploads) return; const t = window.setInterval(() => { syncAll().catch(() => {}); }, 45000); return () => window.clearInterval(t); }, [online, pendingUploads > 0]);
+  const [syncBusy, setSyncBusy] = useState(false); const [syncDone, setSyncDone] = useState(false);
+  const manualSync = async () => { if (syncBusy) return; setSyncBusy(true); setSyncDone(false); try { await Promise.all([syncAll(), new Promise(r => setTimeout(r, 600))]); setSyncDone(true); window.setTimeout(() => setSyncDone(false), 2200); } catch { /* offline */ } setSyncBusy(false); };
   const storageWarn = useStorageWarning(80);
   const updateReady = useUpdateAvailable();
   const [location] = useLocation();
@@ -180,12 +185,13 @@ function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <button className="icon-button menu-toggle" onClick={() => setMobileMenu(!mobileMenu)} aria-label="فتح القائمة" data-testid="button-menu"><MoreHorizontal size={22}/></button>
         <div className="crumb">{nav.find(n => n.href === location)?.label || (location.startsWith('/inspection') ? 'الزيارة الميدانية' : location.startsWith('/reports') ? 'التقرير' : 'مساحة العمل')}</div>
-        <div className="topbar-right"><button type="button" className="icon-button search-btn" onClick={openSearch} aria-label="بحث" data-testid="button-search"><Search size={18}/></button><DisplayMenu/>{cloudEnabled ? <span className={`sync-chip ${online ? '' : 'off'}`}><i/>{online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}</span> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
+        <div className="topbar-right"><button type="button" className="icon-button search-btn" onClick={openSearch} aria-label="بحث" data-testid="button-search"><Search size={18}/></button><DisplayMenu/>{cloudEnabled ? <button type="button" className={`sync-chip ${online ? '' : 'off'} ${syncBusy ? 'busy' : ''}`} onClick={manualSync} disabled={!online || syncBusy} aria-label="تحديث البيانات الآن" data-testid="button-sync"><i/>{syncBusy ? 'جارٍ التحديث…' : syncDone ? 'تم التحديث ✓' : online ? (pendingUploads ? `جارٍ رفع ${pendingUploads} زيارة…` : 'متصل · تمت المزامنة') : `دون اتصال · محفوظ على الجهاز${pendingUploads ? ` · ${pendingUploads} لم تُرفع` : ''}`}<RefreshCw size={12} className="sc-ico"/></button> : <span className="local-chip"><span/> محلي على هذا الجهاز</span>}{cloudEnabled ? <button className="avatar" type="button" title="تسجيل الخروج" aria-label="تسجيل الخروج" onClick={() => { if (window.confirm('تسجيل الخروج من الحساب؟ المسودات غير المزامنة تبقى محفوظة على الجهاز.')) signOutUser(); }}>خروج</button> : <span className="avatar">ج</span>}</div>
       </header>
       {updateReady && <div className="update-banner" role="status"><span>تم تحديث التطبيق إلى نسخة أحدث.</span><button type="button" onClick={() => window.location.reload()}>تحديث الآن</button></div>}
       {storageWarn && <div className="storage-banner" role="alert"><b>مساحة جهازك شبه ممتلئة ({storageWarn.pct}%)</b><span>ارفع الزيارات المعلّقة، ثم احذف المسودات القديمة والتجريبية لتفادي فقدان التقدّم.</span></div>}
       {mobileMenu && <MoreSheet location={location} onClose={() => setMobileMenu(false)}/>}
       <AskName/>
+      <PullToRefresh enabled={cloudEnabled && online} onRefresh={() => syncAll()}/>
       <main className="page-wrap"><div key={location} className="route-in">{children}</div></main>
       <nav className="bottom-nav" aria-label="التنقل الرئيسي">{nav.filter(n => n.href !== '/settings').map(n => <Link href={n.href} key={n.href} data-testid={`bottom-nav-${n.href === '/' ? 'home' : n.href.slice(1)}`} className={location === n.href ? 'selected' : ''}><span className="nav-ico"><n.icon size={22}/></span><span>{n.label}</span></Link>)}<button type="button" className={`more-tab ${mobileMenu || inMore ? 'selected' : ''}`} onClick={() => setMobileMenu(true)} aria-haspopup="dialog" data-testid="bottom-nav-more"><span className="nav-ico"><MoreHorizontal size={22}/></span><span>المزيد</span></button></nav>
     </div>
@@ -270,7 +276,7 @@ function useLocalData() {
       const [i, b, a] = await Promise.all([list<Inspection>('inspections'), list<Branch>('branches'), list<ActionItem>('actions')]);
       const sorted = i.sort((x, y) => y.updatedAt.localeCompare(x.updatedAt));
       setInspections(sorted.filter(x => !x.training)); setTraining(sorted.filter(x => x.training));
-      setBranches(b.sort((x, y) => x.name.localeCompare(y.name, 'ar')));
+      registerBranchCoords(b); setBranches(b.sort((x, y) => x.name.localeCompare(y.name, 'ar')));
       setActions(a.sort((x, y) => x.dueDate.localeCompare(y.dueDate)));
       setError('');
     } catch (e) {
@@ -585,6 +591,8 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
   const appConfig = useConfig();
   const needsPhoto = (qid: number) => appConfig.photoRequiredOnFail.includes(qid) && answers[qid]?.value === 'fail' && !(answers[qid]?.attachments?.length);
   const [autoAdvance, setAutoAdvance] = useState(() => { try { return localStorage.getItem('rq-auto') !== 'off'; } catch { return true; } });
+  const [quick, setQuick] = useState(() => { try { return localStorage.getItem('rq-quick') === 'on'; } catch { return false; } });
+  const [overview, setOverview] = useState(true);
   const [conflict, setConflict] = useState<Inspection | null>(() => getConflict(id));
   const [toast, setToast] = useState<{ text: string; back: number } | null>(null);
   const touch = useRef<{ x: number; y: number } | null>(null);
@@ -677,6 +685,22 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         setToast({ text: sectionDone ? `✓ اكتمل قسم «${q.section}»${secFails ? ` · ${secFails} ملاحظة` : ' · بدون ملاحظات'}` : `${value === 'pass' ? '✓ مطابق' : '— لا ينطبق'} · البند ${q.id}`, back: from });
       }, 320);
     }
+  };
+  const setQuickMode = (v: boolean) => { setQuick(v); setOverview(true); try { localStorage.setItem('rq-quick', v ? 'on' : 'off'); } catch { /* ignore */ } };
+  const overviewSet = (qq: Question, value: 'pass' | 'fail' | 'na') => {
+    update({ value, severity: qq.severity }, qq.id);
+    try { navigator.vibrate?.(value === 'fail' ? [18, 40, 18] : 10); } catch { /* unsupported */ }
+    if (value === 'fail') { setIndex(questions.findIndex(x => x.id === qq.id)); setOverview(false); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  };
+  const overviewBulk = (ids: number[]) => {
+    setAnswers(old => { const next = { ...old }; for (const id2 of ids) { const qq = questions.find(x => x.id === id2); if (qq) next[id2] = { ...defaultAnswer(old[id2]), value: 'pass', severity: qq.severity }; } return next; });
+    try { navigator.vibrate?.(14); } catch { /* unsupported */ }
+    setToast({ text: `✓ ${ids.length} بنداً مطابقاً`, back: index });
+  };
+  const gotoSection = (delta: number) => {
+    const at = sectionGroups.indexOf(q.section), to = at + delta;
+    if (to >= sectionGroups.length) { setReview(true); return; }
+    const first = questions.findIndex(x => x.section === sectionGroups[to]); if (first >= 0) { setIndex(first); setOverview(true); setMessage(''); window.scrollTo({ top: 0, behavior: 'smooth' }); }
   };
   const jumpIncomplete = () => {
     const n = questions.length;
@@ -772,10 +796,13 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
       <div className="field-hud">
         <div className="hud-score"><small>النتيجة حتى الآن</small><b>{liveScore.score === null ? '—' : `${liveScore.score}%`}</b>{liveScore.criticalFailures > 0 && <em>إخفاق حرج</em>}</div>
         <button type="button" className={`hud-auto ${autoAdvance ? 'on' : ''}`} onClick={() => { const v = !autoAdvance; setAutoAdvance(v); try { localStorage.setItem('rq-auto', v ? 'on' : 'off'); } catch { /* ignore */ } }} aria-pressed={autoAdvance}>{autoAdvance ? 'انتقال تلقائي ✓' : 'انتقال تلقائي'}</button>
+        <button type="button" className={`hud-auto ${quick ? 'on' : ''}`} onClick={() => setQuickMode(!quick)} aria-pressed={quick} data-testid="button-quick-mode"><ListChecks size={13}/> {quick ? 'عرض القسم ✓' : 'عرض القسم'}</button>
         <button type="button" className={`hud-auto ${camAuto ? 'on' : ''}`} onClick={() => { const v = !camAuto; setCamAuto(v); try { localStorage.setItem('rq-cam', v ? 'on' : 'off'); } catch { /* ignore */ } }} aria-pressed={camAuto}>{camAuto ? 'كاميرا تلقائية ✓' : 'كاميرا تلقائية'}</button>
       </div>
       <SectionProgress questions={questions} values={Object.fromEntries(questions.map(x => [x.id, answers[x.id]?.value as string | null | undefined])) as Record<number, string | null | undefined>} current={q.section} onJump={qid => { setIndex(questions.findIndex(y => y.id === qid)); setMessage(''); }}/>
       <div className="heat-strip" aria-label="خريطة الزيارة">{sectionGroups.map(section => <div className="heat-group" key={section} title={section}>{questions.filter(x => x.section === section).map(x => { const v = answers[x.id]?.value; return <button type="button" key={x.id} aria-label={`البند ${x.id}`} onClick={() => { setIndex(questions.findIndex(y => y.id === x.id)); setMessage(''); }} className={`heat ${v === 'pass' ? 'p' : v === 'fail' ? 'f' : v === 'na' ? 'n' : ''} ${x.id === q.id ? 'cur' : ''} ${x.severity === 'Critical' ? 'crit' : ''}`}/>; })}</div>)}</div>
+      {quick && overview && fieldMode ? <SectionOverview section={q.section} number={sectionGroups.indexOf(q.section) + 1} total={sectionGroups.length} questions={questions.filter(x => x.section === q.section)} answers={answers} onSet={overviewSet} onBulkPass={overviewBulk} onOpen={qq => { setIndex(questions.findIndex(x => x.id === qq.id)); setOverview(false); window.scrollTo({ top: 0, behavior: 'smooth' }); }} onPrev={sectionGroups.indexOf(q.section) > 0 ? () => gotoSection(-1) : undefined} onNext={() => gotoSection(1)} last={sectionGroups.indexOf(q.section) === sectionGroups.length - 1}/> : <>
+      {quick && fieldMode && <button type="button" className="so-back" onClick={() => setOverview(true)} data-testid="button-back-to-section"><ListChecks size={16}/> العودة لقائمة القسم</button>}
       <div className="question-breadcrumb"><span>{q?.section}</span><span>السؤال {index + 1} من {questions.length} · اسحب للتنقل</span></div><Card className="question-card"><div className="question-number">{String(q.id).padStart(2, '0')}<span> / {questions.length}</span></div><h2>{q.title}</h2><div className={`sev-line ${q.severity.toLowerCase()}`}><span>{q.severity === 'Critical' ? 'حرج' : q.severity === 'Major' ? 'رئيسي' : 'ثانوي'}</span>وزن {WEIGHTS[q.severity]} · التصحيح خلال {q.severity === 'Critical' ? '24 ساعة' : q.severity === 'Major' ? '72 ساعة' : '7 أيام'}{q.severity === 'Critical' && <b> · الإخفاق يجعل الزيارة غير مقبولة</b>}</div>
       {q.measurement && (() => { const hasRange = q.measurement.min !== undefined && q.measurement.max !== undefined; return <div className="measurement-box"><div><span>النطاق المعتمد <small>(وفق نموذج الفحص)</small></span><b>{hasRange ? `${q.measurement.min} – ${q.measurement.max} ${q.measurement.unit}` : `لم يُحدَّد معيار · الوحدة ${q.measurement.unit}`}</b></div><div><span>القراءة الفعلية</span><label><input type="number" inputMode="decimal" value={answer.actual ?? ''} onChange={e => update({ actual: e.target.value === '' ? undefined : Number(e.target.value) })} onKeyDown={e => { if (e.key === 'Enter') e.currentTarget.blur(); }} placeholder="—" data-testid={`input-measure-${q.id}`}/><small>{q.measurement.unit}</small></label></div>{hasRange && answer.actual !== undefined && <div className={`measure-check ${answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'within' : 'outside'}`} data-testid={`measure-check-${q.id}`}>{answer.actual >= q.measurement.min! && answer.actual <= q.measurement.max! ? 'ضمن النطاق' : 'خارج النطاق'} · مقارنة بالمعيار المعتمد</div>}{hasRange && answer.actual !== undefined && (answer.actual < q.measurement.min! || answer.actual > q.measurement.max!) && answer.value !== 'fail' && <div className="nudge"><span>القراءة خارج النطاق المعتمد. هل البند غير مطابق؟</span><button type="button" onClick={() => choose('fail')}>تسجيل «غير مطابق»</button></div>}</div>; })()}
       {q.inputType && q.inputType !== 'status' && <div className="typed-response"><div className="answer-label">قراءة إضافية <small>اختياري</small></div>{q.inputType === 'numeric' && !q.measurement && <input className="typed-input" type="number" inputMode="decimal" value={answer.entry as string || ''} onChange={e => update({ entry:e.target.value })} placeholder="أدخل القراءة" data-testid={`input-numeric-${q.id}`}/>}
@@ -798,9 +825,9 @@ function InspectionRunner({ data }: { data: ReturnType<typeof useLocalData> }) {
         <p>التقط صورة بالكاميرا أو اختر من المعرض. الفيديو يُحفظ على هذا الجهاز فقط.</p>
         {answer.attachments.length > 0 && <div className="evidence-grid">{answer.attachments.map(img => <div className="evidence-item" key={img.id}>{img.type.startsWith('video/') ? <MediaVideo att={img}/> : <MediaImg att={img} alt={img.caption || img.name}/>}{img.type.startsWith('video/') && <span className="video-local">فيديو · على هذا الجهاز</span>}<button onClick={() => removePhoto(img.id)} aria-label="حذف الصورة"><X size={15}/></button>{!img.type.startsWith('video/') && <button type="button" className="ev-annot" onClick={() => setAnnot(img.id)} aria-label="تعليم الصورة"><PenLine size={14}/> {img.annotated ? 'تعديل التعليم' : 'علّم'}</button>}<input value={img.caption} onChange={e => updateCaption(img.id, e.target.value)} placeholder="أضف وصفاً للصورة"/></div>)}</div>}
       </div>
-      </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</div></div>}
+      </Card>{!isPhone && <div className="question-controls"><Button variant="outline" disabled={index === 0} onClick={() => setIndex(Math.max(0,index - 1))}><ArrowRight size={16}/> السابق</Button><span>{index + 1} / {questions.length}</span>{index < questions.length - 1 ? <Button onClick={() => goNext()} data-testid="button-next-question">التالي <ArrowLeft size={16}/></Button> : <Button onClick={() => setReview(true)} data-testid="button-review">مراجعة وإنهاء <FileCheck2 size={16}/></Button>}</div>}</>}</div></div>}
     {fieldMode && <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={e => { selectPhoto(e.target.files, answer.value === 'fail'); e.currentTarget.value = ''; }} data-testid="input-camera"/>}
-    {fieldMode && isPhone && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="region" aria-label="أزرار الإجابة السريعة">
+    {fieldMode && isPhone && !(quick && overview) && createPortal(<div className={`action-bar ${kbOpen ? 'compact' : ''}`} role="region" aria-label="أزرار الإجابة السريعة">
       <div className="ab-answers">{[['pass','مطابق',Check],['fail','غير مطابق',X],['na','لا ينطبق',CircleHelp]].map(([value,label,Icon]) => <button type="button" key={value as string} onClick={() => choose(value as 'pass' | 'fail' | 'na')} className={`ab-btn ${value} ${answer.value === value ? 'chosen' : ''}`} data-testid={`answer-${value}-${q.id}`}><Icon size={22}/><b>{label as string}</b></button>)}</div>
       <div className="ab-tools">
         <button type="button" className="ab-prev" disabled={index === 0} onClick={() => { setIndex(Math.max(0, index - 1)); setMessage(''); }} aria-label="السابق"><ArrowRight size={18}/></button>
@@ -910,6 +937,7 @@ function Router() {
     <Route path="/priorities"><PrioritiesPage data={data}/></Route>
     <Route path="/branches"><BranchesPage data={data}/></Route>
     <Route path="/branches/:id"><BranchProfile data={data}/></Route>
+    <Route path="/compare"><ComparePage data={data}/></Route>
     <Route path="/analytics"><AnalyticsPage data={data}/></Route>
     <Route path="/equipment"><EquipmentPage data={data}/></Route>
     <Route path="/baristas"><BaristasPage data={data}/></Route>

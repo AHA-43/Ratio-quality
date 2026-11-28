@@ -1,6 +1,6 @@
 // Branch coordinates: resolved from each branch's Google Maps link in the approved workbook (exact),
 // otherwise the city centre (approximate, flagged). See scripts/src/resolve-map-links.py.
-import exact from './branch-coords.json';
+import exact from './branch-coords.json' with { type: 'json' };
 
 const CITY: [RegExp, number, number][] = [
   [/مطار الأحساء/, 25.285, 49.485], [/الاحساء|الأحساء|الكوت|مستشفى الأحساء/, 25.383, 49.586],
@@ -17,7 +17,20 @@ const CITY: [RegExp, number, number][] = [
 export type Pos = { lat: number; lng: number; exact: boolean };
 const table = exact as unknown as Record<string, [number, number]>;
 const hash = (s: string) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7);
+/** Exact positions set from inside the app (a branch's own lat/lng), checked before the shipped table. */
+const custom = new Map<string, [number, number]>();
+export function registerBranchCoords(list: { id: string; lat?: number; lng?: number }[]) {
+  custom.clear(); for (const b of list) if (typeof b.lat === 'number' && typeof b.lng === 'number') custom.set(b.id, [b.lat, b.lng]);
+}
+/** Pulls coordinates out of a Google Maps link or a pasted "lat, lng" pair; null when none (or outside Saudi Arabia). */
+export function parseCoords(text: string): { lat: number; lng: number } | null {
+  const t = decodeURIComponent(text.trim().replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).replace(/،/g, ',')).replace(/\+/g, ' ');
+  const pats = [/@(-?\d{1,3}\.\d+),\s*(-?\d{1,3}\.\d+)/, /!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/, /[?&](?:q|ll|query|destination|center)=\s*(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/, /^\s*(-?\d{1,3}\.\d+)\s*[, ]\s*(-?\d{1,3}\.\d+)\s*$/];
+  for (const re of pats) { const m = t.match(re); if (m) { const lat = Number(m[1]), lng = Number(m[2]); if (lat >= 15 && lat <= 33 && lng >= 34 && lng <= 56) return { lat, lng }; } }
+  return null;
+}
 export function branchPos(id: string, name: string): Pos | null {
+  const c0 = custom.get(id); if (c0) return { lat: c0[0], lng: c0[1], exact: true };
   const e = table[id]; if (e) return { lat: e[0], lng: e[1], exact: true };
   const c = CITY.find(([re]) => re.test(name)); if (!c) return null;
   const h = hash(id); // spread same-city branches slightly so pins don't overlap

@@ -32,7 +32,7 @@ export function PrioritiesPage({ data }: { data: D }) {
     </div>
     <div className="pr-tabs" role="tablist"><button role="tab" aria-selected={tab === 'focus'} className={tab === 'focus' ? 'on' : ''} onClick={() => setTab('focus')}><Flame size={16}/> نقاط التركيز</button><button role="tab" aria-selected={tab === 'plan'} className={tab === 'plan' ? 'on' : ''} onClick={() => setTab('plan')}><CalendarCheck size={16}/> خطة الأسبوع</button></div>
 
-    {tab === 'focus' && <>
+    {tab === 'focus' && <div className="tab-in">
       <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">آخر {focus.windowDays} يوماً</span><h2>أكثر البنود فشلاً</h2></div></div>
         {focus.top.length === 0 ? <p className="pr-empty">لا توجد ملاحظات كافية بعد. بعد اعتماد الزيارات ستظهر هنا البنود الأكثر تكراراً على مستوى كل الفروع.</p> :
           <ol className="pr-list">{focus.top.map((f, i) => <li key={f.q.id} className="pr-focus">
@@ -63,9 +63,9 @@ export function PrioritiesPage({ data }: { data: D }) {
         {focus.never > 0 && <div className="pr-note"><MapPin size={16}/>{focus.never} فرع لم تتم زيارته بعد.</div>}
         {focus.stale.length ? <ul className="pr-list">{focus.stale.map(s => <li key={s.branch.id}><Link href={`/branches/${s.branch.id}`} className="pr-row"><b>{s.branch.name}</b><span className="pr-days">{s.days} يوماً</span></Link></li>)}</ul> : focus.never === 0 && <p className="pr-empty">كل الفروع مزارة خلال آخر 30 يوماً.</p>}
       </section>
-    </>}
+    </div>}
 
-    {tab === 'plan' && <>
+    {tab === 'plan' && <div className="tab-in">
       <section className="surface-card pr-plan-head">
         <div><b>كم زيارة في اليوم؟</b><small>الخطة تُحدَّث تلقائياً بعد كل زيارة.</small></div>
         <div className="segmented" role="group">{[1, 2, 3].map(n => <button key={n} className={perDay === n ? 'active' : ''} onClick={() => setPerDay(n)}>{n}</button>)}</div>
@@ -80,7 +80,7 @@ export function PrioritiesPage({ data }: { data: D }) {
             <Link href={`/inspection/new?branch=${encodeURIComponent(it.branch.id)}`} className="button button-primary pr-go">ابدأ <ArrowLeft size={15}/></Link>
           </li>)}</ul>
         </section>)}
-    </>}
+    </div>}
   </div>;
 }
 

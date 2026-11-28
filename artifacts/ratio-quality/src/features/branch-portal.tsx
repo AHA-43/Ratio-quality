@@ -2,7 +2,7 @@
 // with a proof photo; the quality team then verifies and closes them. Reads only what the rules allow.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, doc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
-import { Camera, CheckCircle2, ChevronLeft, Clock3, FileText, LogOut, Store, X } from 'lucide-react';
+import { BellRing, Camera, CheckCircle2, ChevronLeft, Clock3, FileText, LogOut, Store, X } from 'lucide-react';
 import { auth, fs, signOutUser } from '../cloud';
 import type { ActionItem, Attachment, Inspection } from '../data';
 import { calculateScore } from '../scoring';
@@ -10,6 +10,34 @@ import { audit, useProfile } from '../session';
 import { compressPhoto } from './facade';
 import { MediaImg } from './media';
 import { sessionGreeting } from './greeting';
+import { chime, systemNotify } from './approval-alert';
+
+const isTodo = (a: ActionItem) => a.status !== 'مغلق' && a.status !== 'بانتظار التحقق';
+const sig = (a: ActionItem) => `${a.status}|${a.updatedAt ?? ''}|${a.history?.length ?? 0}`;
+const returnedNote = (a: ActionItem) => { const n = a.history?.at(-1)?.note; return n?.startsWith('أُعيد للفرع') ? n : ''; };
+
+/** Alerts the manager when an action is new to the branch or was sent back for another try. */
+function useBranchAlerts(actions: ActionItem[], uid: string | undefined) {
+  const [fresh, setFresh] = useState<{ a: ActionItem; back: boolean }[]>([]);
+  const [newIds, setNewIds] = useState<Set<string>>(new Set());
+  const key = `rq-bp-seen-${uid ?? ''}`;
+  useEffect(() => {
+    const nav = navigator as Navigator & { setAppBadge?: (n: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    const todo = actions.filter(isTodo);
+    (todo.length ? nav.setAppBadge?.(todo.length) : nav.clearAppBadge?.())?.catch(() => {});
+    if (!uid || !actions.length) return;
+    let seen: Record<string, string> | null = null; try { seen = JSON.parse(localStorage.getItem(key) || 'null'); } catch { /* ignore */ }
+    const next = { ...(seen ?? {}) }; for (const a of actions) next[a.id] = sig(a);
+    try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* ignore */ }
+    if (!seen) return; // first run on this device: everything shows in the list, nothing "arrives"
+    const arrived = todo.filter(a => seen![a.id] !== sig(a)).map(a => ({ a, back: Boolean(returnedNote(a)) }));
+    if (!arrived.length) return;
+    setFresh(arrived); setNewIds(old => new Set([...old, ...arrived.map(x => x.a.id)]));
+    chime(); try { navigator.vibrate?.([60, 40, 60]); } catch { /* ignore */ }
+    if (document.visibilityState !== 'visible') for (const x of arrived) systemNotify(x.back ? 'أُعيد إجراء لفرعكم' : 'إجراء جديد لفرعكم', x.a.title.replace(/ — .*$/, ''), '/');
+  }, [actions.map(sig).join('|'), uid]);
+  return { fresh, newIds, dismiss: () => setFresh([]) };
+}
 
 const SEV_AR: Record<string, string> = { Critical: 'حرج', Major: 'رئيسي', Minor: 'ثانوي' };
 const today = () => new Date().toISOString().slice(0, 10);
@@ -26,6 +54,7 @@ export default function BranchPortal() {
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
   const [open, setOpen] = useState<Inspection | null>(null);
   const [tab, setTab] = useState<'actions' | 'reports'>('actions');
+  const alerts = useBranchAlerts(actions, me?.uid);
 
   const load = async () => {
     if (!fs || !ids.length) { setState('ok'); return; }
@@ -42,7 +71,14 @@ export default function BranchPortal() {
       setReports(r.sort((x, y) => y.date.localeCompare(x.date))); setActions(a); setState('ok');
     } catch { setState('error'); }
   };
-  useEffect(() => { load(); const t = window.setInterval(load, 60000); return () => window.clearInterval(t); /* eslint-disable-next-line */ }, [ids.join(',')]);
+    useEffect(() => {
+    load(); const t = window.setInterval(load, 40000);
+    const wake = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', wake); window.addEventListener('online', wake);
+    return () => { window.clearInterval(t); document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); };
+    /* eslint-disable-next-line */
+  }, [ids.join(',')]);
+  const [perm, setPerm] = useState(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
 
   const mine = useMemo(() => ({
     reports: reports.filter(r => !branch || r.branchId === branch),
@@ -70,13 +106,17 @@ export default function BranchPortal() {
         <div><b>{lastScore === null ? '—' : `${lastScore}%`}</b><span>آخر زيارة</span></div>
       </div>
     </section>
+    {alerts.fresh.length > 0 && <div className="approval-toast bp-alert" role="status" aria-live="polite"><span className="at-ico"><BellRing size={20}/></span>
+      <button type="button" className="at-body" onClick={() => { setTab('actions'); alerts.dismiss(); }}><b>{alerts.fresh.length > 1 ? `${alerts.fresh.length} إجراءات تحتاج تصحيحاً` : alerts.fresh[0].back ? 'أُعيد إجراء لإعادة التصحيح' : 'إجراء جديد لفرعكم'}</b><small>{alerts.fresh[0].a.title.replace(/ — .*$/, '')}</small></button>
+      <button type="button" className="at-x" onClick={alerts.dismiss} aria-label="إغلاق"><X size={16}/></button></div>}
+    {perm === 'default' && <button type="button" className="bp-notify" onClick={async () => { try { setPerm(await Notification.requestPermission()); } catch { /* ignore */ } }}><BellRing size={16}/> فعّل التنبيهات لتصلك الإجراءات الجديدة حتى والتطبيق مغلق</button>}
     {!ids.length && <div className="bp-empty">لم يُربط حسابك بأي فرع بعد. تواصل مع إدارة الجودة.</div>}
     {state === 'error' && <div className="bp-empty err">تعذّر تحميل البيانات. تأكد من الاتصال ثم أعد المحاولة. <button type="button" onClick={load}>إعادة المحاولة</button></div>}
     <div className="bp-tabs" role="tablist"><button role="tab" aria-selected={tab === 'actions'} className={tab === 'actions' ? 'on' : ''} onClick={() => setTab('actions')}>الإجراءات التصحيحية{todo.length ? <em>{todo.length}</em> : null}</button><button role="tab" aria-selected={tab === 'reports'} className={tab === 'reports' ? 'on' : ''} onClick={() => setTab('reports')}>تقارير الزيارات</button></div>
     {state === 'loading' && <div className="skeleton-list"><i/><i/><i/></div>}
     {state !== 'loading' && tab === 'actions' && <div className="bp-list">
       {!mine.actions.length && <div className="bp-empty">لا توجد إجراءات تصحيحية لفرعكم. أحسنتم 👏</div>}
-      {mine.actions.map(a => <ActionCard key={a.id} a={a} onDone={next => setActions(list => list.map(x => x.id === next.id ? next : x))}/>)}
+      {mine.actions.map(a => <ActionCard key={a.id} fresh={alerts.newIds.has(a.id)} a={a} onDone={next => setActions(list => list.map(x => x.id === next.id ? next : x))}/>)}
     </div>}
     {state !== 'loading' && tab === 'reports' && <div className="bp-list">
       {!mine.reports.length && <div className="bp-empty">لا توجد تقارير معتمدة بعد.</div>}
@@ -88,7 +128,7 @@ export default function BranchPortal() {
   </div>;
 }
 
-function ActionCard({ a, onDone }: { a: ActionItem; onDone: (a: ActionItem) => void }) {
+function ActionCard({ a, onDone, fresh }: { a: ActionItem; onDone: (a: ActionItem) => void; fresh?: boolean }) {
   const me = useProfile();
   const input = useRef<HTMLInputElement>(null);
   const [note, setNote] = useState(a.managerNote ?? '');
@@ -112,7 +152,8 @@ function ActionCard({ a, onDone }: { a: ActionItem; onDone: (a: ActionItem) => v
     } catch { setErr('تعذّر الإرسال. تأكد من الاتصال وحاول مرة أخرى.'); }
     setBusy(false);
   };
-  return <article className={`bp-action ${a.status === 'مغلق' ? 'closed' : a.status === 'بانتظار التحقق' ? 'waiting' : overdue(a) ? 'late' : ''}`}>
+  return <article className={`bp-action ${fresh ? 'fresh' : ''} ${a.status === 'مغلق' ? 'closed' : a.status === 'بانتظار التحقق' ? 'waiting' : overdue(a) ? 'late' : ''}`}>
+    {fresh && <span className="bp-new">جديد</span>}
     <div className="bp-a-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>
       <span className="bp-a-state">{a.status === 'مغلق' ? <><CheckCircle2 size={14}/> مُغلق</> : a.status === 'بانتظار التحقق' ? <><Clock3 size={14}/> بانتظار تحقق الجودة</> : overdue(a) ? `متأخر · ${a.dueDate}` : `الاستحقاق ${a.dueDate || '—'}`}</span></div>
     <h3>{a.title.replace(/ — .*$/, '')}</h3>

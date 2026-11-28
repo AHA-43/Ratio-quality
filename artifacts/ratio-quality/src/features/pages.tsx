@@ -23,7 +23,7 @@ const CHIP_ICON: Record<string, typeof ListChecks> = { 'مفتوحة': CircleDot
 const STATUSES: ActionItem['status'][] = ['مفتوح', 'مُسند', 'قيد المعالجة', 'بانتظار التحقق', 'مغلق'];
 import { isOverdue } from './overdue';
 import { MediaImg } from './media';
-import { AlarmClock, CheckCircle2, CircleDot, Hammer, Hourglass, ListChecks, Repeat, UserCheck } from 'lucide-react';
+import { GitCompareArrows, AlarmClock, CheckCircle2, CircleDot, Hammer, Hourglass, ListChecks, Repeat, UserCheck } from 'lucide-react';
 import { HeadIcon } from './page-icons';
 export { isOverdue };
 
@@ -390,6 +390,7 @@ export function BranchesPage({ data }: { data: AppData }) {
   }).sort((x, y) => sort === 'name' ? x.b.name.localeCompare(y.b.name, 'ar') : sort === 'due' ? (y.daysSince ?? 9999) - (x.daysSince ?? 9999) : (x.last?.score ?? 101) - (y.last?.score ?? 101));
   return <div className="page-content">
     <Title eyebrow="الفروع" title="أداء الفروع" detail={`${rows.length} فرعاً فعّالاً · رتّب لترى الأضعف أداءً أو الأطول بلا زيارة.`}/>
+    <Link href="/compare" className="br-compare"><GitCompareArrows size={16}/> قارن فرعين أو فرعاً مع نفسه</Link>
     <SaudiMap branches={data.branches.filter(b => !b.archived)} scores={Object.fromEntries(rows.map(r => [r.b.id, { score: r.last?.score ?? null, cls: r.last?.classification ?? null }])) as BranchScore} onSelect={id => { go(`/branches/${id}`); }}/>
     <div className="branch-tools"><input className="typed-input" value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالاسم أو الكود"/>
       <div className="segmented">{([['score', 'الأضعف أولاً'], ['due', 'الأطول بلا زيارة'], ['name', 'أبجدياً']] as const).map(([k, l]) => <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>{l}</button>)}</div></div>
@@ -403,34 +404,3 @@ export function BranchesPage({ data }: { data: AppData }) {
   </div>;
 }
 
-export function BranchProfile({ data }: { data: AppData }) {
-  const [, params] = useRoute('/branches/:id');
-  const b = data.branches.find(x => x.id === params?.id);
-  if (!b) return <div className="page-content"><p>الفرع غير موجود.</p></div>;
-  const done = data.inspections.filter(i => i.branchId === b.id && i.status === 'finalized').sort((x, y) => x.date.localeCompare(y.date));
-  const scored = done.map(i => ({ i, s: calculateScore(i.questionSnapshot, i.answers) }));
-  const last = scored.at(-1), prev = scored.at(-2);
-  const delta = last?.s.score != null && prev?.s.score != null ? +(last.s.score - prev.s.score).toFixed(1) : null;
-  const freq = Object.values(done.flatMap(i => i.questionSnapshot.filter(q => i.answers[q.id]?.value === 'fail' || i.answers[q.id]?.initialValue === 'fail').map(q => q))
-    .reduce<Record<number, { q: Question; n: number }>>((m, q) => { (m[q.id] ??= { q, n: 0 }).n++; return m; }, {})).sort((x, y) => y.n - x.n);
-  const open = data.actions.filter(a => a.status !== 'مغلق' && (a.branchId === b.id || a.branchName === b.name));
-  const W = 320, H = 90, pts = scored.filter(x => x.s.score != null);
-  const path = pts.map((x, k) => `${k ? 'L' : 'M'}${pts.length === 1 ? W / 2 : (k / (pts.length - 1)) * (W - 20) + 10},${H - 10 - (x.s.score! / 100) * (H - 20)}`).join(' ');
-  return <div className="page-content">
-    <Link href="/branches" className="back-link">← الفروع</Link>
-    <Title eyebrow={b.code ?? 'فرع'} title={b.name} detail={b.city}/>
-    <div className="kpi-grid">
-      <div className="surface-card kpi"><small>آخر نتيجة</small><b>{last?.s.score ?? '—'}{last?.s.score != null ? '%' : ''}</b><span className={`trend ${delta == null ? '' : delta >= 0 ? 'up' : 'down'}`}>{delta == null ? '' : `${delta >= 0 ? '▲' : '▼'} ${Math.abs(delta)} عن السابقة`}</span></div>
-      <div className="surface-card kpi"><small>التصنيف</small><b>{last?.s.classification ?? '—'}</b></div>
-      <div className="surface-card kpi"><small>زيارات مكتملة</small><b>{done.length}</b></div>
-      <div className="surface-card kpi"><small>إجراءات مفتوحة / متأخرة</small><b>{open.length} / {open.filter(isOverdue).length}</b></div>
-    </div>
-    <div className="analytics-grid">
-      <section className="surface-card"><h3>اتجاه النتيجة</h3>{pts.length ? <svg viewBox={`0 0 ${W} ${H}`} className="spark" role="img" aria-label="اتجاه النتيجة عبر الزيارات"><line x1="0" x2={W} y1={H - 10 - 0.9 * (H - 20)} y2={H - 10 - 0.9 * (H - 20)} className="ref"/><line x1="0" x2={W} y1={H - 10 - 0.7 * (H - 20)} y2={H - 10 - 0.7 * (H - 20)} className="ref bad"/><path d={path}/>{pts.map((x, k) => <circle key={k} cx={pts.length === 1 ? W / 2 : (k / (pts.length - 1)) * (W - 20) + 10} cy={H - 10 - (x.s.score! / 100) * (H - 20)} r="4"/>)}</svg> : <p className="muted-text">لا توجد زيارات مكتملة.</p>}<small className="muted-text">الخط العلوي 90% (ممتاز) · السفلي 70% (حد القبول)</small></section>
-      <section className="surface-card"><h3>الملاحظات المتكررة في هذا الفرع</h3>{freq.length ? freq.slice(0, 8).map(f => <div key={f.q.id} className="bar-row"><span className="bar-label">#{f.q.id} {f.q.title}</span><span className="bar-track"><i style={{ width: `${f.n / freq[0].n * 100}%` }}/></span><b>{f.n}</b></div>) : <p className="muted-text">لا توجد ملاحظات.</p>}</section>
-      <section className="surface-card"><h3>الإجراءات المفتوحة</h3>{open.length ? open.map(a => <div key={a.id} className="mini-row"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span><span>#{a.questionId} {a.description}</span><small>{isOverdue(a) ? 'متأخر' : a.dueDate}</small></div>) : <p className="muted-text">لا توجد إجراءات مفتوحة.</p>}</section>
-      <section className="surface-card"><h3>سجل الزيارات</h3>{[...scored].reverse().map(x => <Link key={x.i.id} href={`/reports/${x.i.id}`} className="mini-row"><span>{x.i.date.slice(0, 10)}</span><span>{x.i.inspector}</span><b>{x.s.score ?? '—'}%</b></Link>)}{!scored.length && <p className="muted-text">لا توجد زيارات.</p>}</section>
-    </div>
-    <Link href="/inspection/new" className="button button-primary full-button">بدء زيارة لهذا الفرع</Link>
-  </div>;
-}
