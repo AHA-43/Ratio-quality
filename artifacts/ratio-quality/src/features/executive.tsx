@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { HeadIcon } from './page-icons';
 import { Link } from 'wouter';
 import { ArrowLeft, CalendarCheck, Printer, TrendingDown, TrendingUp } from 'lucide-react';
 import type { ActionItem, Branch, Inspection } from '../data';
@@ -79,7 +80,7 @@ export function ExecutivePage({ data }: { data: D }) {
   };
   const tone = s.avg === null ? 'navy' : s.avg >= 90 ? 'good' : s.avg >= 80 ? 'ok' : s.avg >= 70 ? 'warn' : 'bad';
   return <div className="page-content ex-page">
-    <div className="page-title"><div><span className="eyebrow">نظرة تنفيذية</span><h1>لوحة الإدارة</h1><p>خلاصة أداء الجودة في الفروع، جاهزة للعرض والطباعة.</p></div><button type="button" className="button button-outline no-print" disabled={busy} onClick={async () => { setBusy(true); try { const el = document.querySelector<HTMLElement>('.ex-page'); const [{ elementToPdf }, { deliver }] = await Promise.all([import('./pdf-export'), import('./exports')]); if (el) await deliver(await elementToPdf(el, { wrapperClass: 'page-content ex-page', width: 900 }), `Ratio-executive-${new Date().toISOString().slice(0, 10)}.pdf`, typeof navigator !== 'undefined' && 'share' in navigator); } catch (e) { console.error(e); setErr('تعذّر إنشاء PDF.'); } setBusy(false); }}><Printer size={16}/> {busy ? 'جارٍ التجهيز…' : 'PDF'}</button></div>
+    <div className="page-title"><div className="pt-wrap"><HeadIcon text="لوحة الإدارة" size={22}/><div><span className="eyebrow">نظرة تنفيذية</span><h1>لوحة الإدارة</h1><p>خلاصة أداء الجودة في الفروع، جاهزة للعرض والطباعة.</p></div></div><button type="button" className="button button-outline no-print" disabled={busy} onClick={async () => { setBusy(true); try { const el = document.querySelector<HTMLElement>('.ex-page'); const [{ elementToPdf }, { deliver }] = await Promise.all([import('./pdf-export'), import('./exports')]); if (el) await deliver(await elementToPdf(el, { wrapperClass: 'page-content ex-page', width: 900 }), `Ratio-executive-${new Date().toISOString().slice(0, 10)}.pdf`, typeof navigator !== 'undefined' && 'share' in navigator); } catch (e) { console.error(e); setErr('تعذّر إنشاء PDF.'); } setBusy(false); }}><Printer size={16}/> {busy ? 'جارٍ التجهيز…' : 'PDF'}</button></div>
     <div className="pr-tabs no-print ex-range" role="tablist">{[[30, 'آخر 30 يوماً'], [90, 'آخر 90 يوماً'], [365, 'آخر سنة']].map(([d, l]) => <button key={d} role="tab" aria-selected={days === d} className={days === d ? 'on' : ''} onClick={() => setDays(d as number)}>{l}</button>)}</div>
 
     <section className={`ex-hero tone-${tone}`}>
@@ -88,7 +89,7 @@ export function ExecutivePage({ data }: { data: D }) {
       <ul className="ex-hero-facts"><li><b>{s.visits}</b><span>زيارة مكتملة</span></li><li><b>{s.branchesVisited}<small>/{s.branchesTotal}</small></b><span>فرع تمت زيارته</span></li><li><b>{s.criticalFailures}</b><span>إخفاق حرج</span></li></ul>
     </section>
 
-    <section className="surface-card ex-brief"><div className="card-heading"><div><span className="eyebrow">ملخص مكتوب تلقائياً</span><h2>الخلاصة للإدارة</h2></div></div><ul>{s.narrative.map((t, i) => <li key={i}>{t}</li>)}</ul></section>
+    <section className="surface-card ex-brief"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="الخلاصة للإدارة ملخص مكتوب تلقائياً"/><div><span className="eyebrow">ملخص مكتوب تلقائياً</span><h2>الخلاصة للإدارة</h2></div></div></div><ul>{s.narrative.map((t, i) => <li key={i}>{t}</li>)}</ul></section>
 
     <TargetCard data={data}/>
     <section className="surface-card ex-monthly no-print"><div><span className="eyebrow">جاهز للإرسال للإدارة</span><h2>التقرير الشهري</h2><p>عرض PowerPoint من 8 شرائح: الخلاصة، التصنيفات، الاتجاه، الأقسام، الفروع، أكثر البنود فشلاً، الإجراءات، والتوصيات.</p></div>
@@ -104,17 +105,17 @@ export function ExecutivePage({ data }: { data: D }) {
     </div>
 
     <div className="pr-two">
-      <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">توزيع نتائج الزيارات</span><h2>التصنيفات</h2></div></div><Donut counts={s.classCounts}/></section>
-      <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">آخر 6 أشهر</span><h2>اتجاه الأداء</h2></div></div><Trend data={s.monthly}/></section>
+      <section className="surface-card pr-card"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="التصنيفات توزيع نتائج الزيارات"/><div><span className="eyebrow">توزيع نتائج الزيارات</span><h2>التصنيفات</h2></div></div></div><Donut counts={s.classCounts}/></section>
+      <section className="surface-card pr-card"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="اتجاه الأداء آخر 6 أشهر"/><div><span className="eyebrow">آخر 6 أشهر</span><h2>اتجاه الأداء</h2></div></div></div><Trend data={s.monthly}/></section>
     </div>
 
-    <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">متوسط الفترة</span><h2>الأداء حسب القسم</h2></div></div>
+    <section className="surface-card pr-card"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="الأداء حسب القسم متوسط الفترة"/><div><span className="eyebrow">متوسط الفترة</span><h2>الأداء حسب القسم</h2></div></div></div>
       {s.sections.length ? <ul className="ex-bars">{s.sections.map(x => <li key={x.name}><span>{x.name}</span><i><em className={x.avg < 70 ? 'bad' : x.avg < 80 ? 'warn' : ''} style={{ width: `${x.avg}%` }}/></i><b>{x.avg}%</b></li>)}</ul> : <p className="pr-empty">لا توجد بيانات كافية.</p>}</section>
 
     <div className="pr-two">
-      <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">آخر نتيجة لكل فرع</span><h2>الأفضل أداءً</h2></div></div>
+      <section className="surface-card pr-card"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="الأفضل أداءً آخر نتيجة لكل فرع"/><div><span className="eyebrow">آخر نتيجة لكل فرع</span><h2>الأفضل أداءً</h2></div></div></div>
         {s.best.length ? <ol className="ex-rank">{s.best.map((x, i) => <li key={x.branch.id}><Link href={`/branches/${x.branch.id}`}><span className="n">{i + 1}</span><b>{x.branch.name}</b><em className="good">{Math.round(x.score)}%</em></Link></li>)}</ol> : <p className="pr-empty">لا توجد بيانات.</p>}</section>
-      <section className="surface-card pr-card"><div className="card-heading"><div><span className="eyebrow">تحتاج متابعة</span><h2>الأقل أداءً</h2></div><Link href="/priorities" className="text-link no-print">الأولويات <ArrowLeft size={14}/></Link></div>
+      <section className="surface-card pr-card"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="الأقل أداءً تحتاج متابعة"/><div><span className="eyebrow">تحتاج متابعة</span><h2>الأقل أداءً</h2></div></div><Link href="/priorities" className="text-link no-print">الأولويات <ArrowLeft size={14}/></Link></div>
         {s.worst.length ? <ol className="ex-rank">{s.worst.map((x, i) => <li key={x.branch.id}><Link href={`/branches/${x.branch.id}`}><span className="n low">{i + 1}</span><b>{x.branch.name}</b><em className={x.score < 70 ? 'bad' : 'warn'}>{Math.round(x.score)}%</em></Link></li>)}</ol> : <p className="pr-empty">لا توجد بيانات.</p>}</section>
     </div>
   </div>;

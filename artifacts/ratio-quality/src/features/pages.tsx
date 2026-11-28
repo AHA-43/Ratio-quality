@@ -16,12 +16,15 @@ const today = () => new Date().toISOString().slice(0, 10);
 const nowIso = () => new Date().toISOString();
 const SEV_AR: Record<string, string> = { Critical: 'حرج', Major: 'رئيسي', Minor: 'ثانوي' };
 const Title = ({ eyebrow, title, detail }: { eyebrow: string; title: string; detail?: string }) =>
-  <div className="page-title"><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{detail && <p>{detail}</p>}</div></div>;
+  <div className="page-title"><div className="pt-wrap"><HeadIcon text={`${title} ${eyebrow}`} size={22}/><div><span className="eyebrow">{eyebrow}</span><h1>{title}</h1>{detail && <p>{detail}</p>}</div></div></div>;
 
 /* ===================== Corrective actions ===================== */
+const CHIP_ICON: Record<string, typeof ListChecks> = { 'مفتوحة': CircleDot, 'متأخرة': AlarmClock, 'متكررة': Repeat, 'مفتوح': CircleDot, 'مُسند': UserCheck, 'قيد المعالجة': Hammer, 'بانتظار التحقق': Hourglass, 'مغلق': CheckCircle2, 'الكل': ListChecks };
 const STATUSES: ActionItem['status'][] = ['مفتوح', 'مُسند', 'قيد المعالجة', 'بانتظار التحقق', 'مغلق'];
 import { isOverdue } from './overdue';
 import { MediaImg } from './media';
+import { AlarmClock, CheckCircle2, CircleDot, Hammer, Hourglass, ListChecks, Repeat, UserCheck } from 'lucide-react';
+import { HeadIcon } from './page-icons';
 export { isOverdue };
 
 export function ActionsBoard({ data }: { data: AppData }) {
@@ -50,7 +53,7 @@ export function ActionsBoard({ data }: { data: AppData }) {
   };
   return <div className="page-content">
     <Title eyebrow="تحسين مستمر" title="الإجراءات التصحيحية" detail={`مفتوحة ${data.actions.length - closed} · متأخرة ${data.actions.filter(isOverdue).length} · نسبة الإغلاق ${data.actions.length ? Math.round(closed / data.actions.length * 100) : 0}%`}/>
-    <div className="filter-scroll">{['مفتوحة', 'متأخرة', 'متكررة', ...STATUSES, 'الكل'].map(s => <button key={s} onClick={() => setFilter(s)} className={`filter-chip ${filter === s ? 'active' : ''}`}>{s}</button>)}</div>
+    <div className="filter-scroll">{['مفتوحة', 'متأخرة', 'متكررة', ...STATUSES, 'الكل'].map(s => { const I = CHIP_ICON[s] ?? ListChecks; return <button key={s} onClick={() => setFilter(s)} className={`filter-chip ${filter === s ? 'active' : ''}`}><I size={14}/> {s}</button>; })}</div>
     {!rows.length && <div className="surface-card empty-note">لا توجد إجراءات في هذا التصنيف.</div>}
     <div className="action-cards">{rows.map(a => <section key={a.id} className={`surface-card action-card ${isOverdue(a) ? 'overdue' : ''}`}>
       <div className="action-head"><span className={`severity-tag ${a.severity.toLowerCase()}`}>{SEV_AR[a.severity]}</span>{a.recurring && <span className="wf-pill returned">متكرر</span>}<span className="action-date">{isOverdue(a) ? `متأخر ${overdueDays(a.dueDate)} يوم · ` : ''}الاستحقاق {a.dueDate || '—'}</span></div>
@@ -301,7 +304,7 @@ export function UsersPage() {
     {err && <div className="alert alert-danger">{err}</div>}
     {admin && <section className="surface-card add-user">
       {!adding ? <button type="button" className="button button-primary add-user-open" onClick={() => { setAdding(true); setCreated(null); }} data-testid="button-add-user">+ إضافة مستخدم</button> :
-        <form onSubmit={createUser} className="add-user-form"><div className="card-heading"><div><span className="eyebrow">حساب جديد</span><h2>إضافة مستخدم</h2></div></div>
+        <form onSubmit={createUser} className="add-user-form"><div className="card-heading"><div className="ch-wrap"><HeadIcon text="إضافة مستخدم حساب جديد"/><div><span className="eyebrow">حساب جديد</span><h2>إضافة مستخدم</h2></div></div></div>
           <label className="field"><span>الاسم <em>*</em></span><input value={nu.name} onChange={e => setNu({ ...nu, name: e.target.value })} placeholder="الاسم الكامل" data-testid="input-new-name"/></label>
           <label className="field"><span>البريد الإلكتروني <em>*</em></span><input type="email" dir="ltr" value={nu.email} onChange={e => setNu({ ...nu, email: e.target.value })} placeholder="name@example.com" data-testid="input-new-email"/></label>
           <label className="field"><span>الدور</span><select value={nu.role} onChange={e => setNu({ ...nu, role: e.target.value as Role })} data-testid="select-new-role">{(Object.keys(ROLE_LABEL) as Role[]).map(r => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}</select></label>

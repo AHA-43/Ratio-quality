@@ -1075,3 +1075,61 @@ html[data-contrast="high"] .button-primary, html[data-contrast="high"] .quick-st
 .br-regions button span { font-size: 11px; color: #8a8ab0; }
 .br-regions button.on { background: var(--navy); color: #fff; border-color: var(--navy); } .br-regions button.on span { color: #c9ccf4; }
 .br-more { width: 100%; margin-top: 12px; }
+
+/* ======== icons in headings ======== */
+.head-ico { flex: none; display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: linear-gradient(135deg, var(--corn-soft), #f3f0ff); color: var(--navy-3); box-shadow: inset 0 0 0 1px #d9ddfb; transition: transform .35s var(--ease-spring); }
+.pt-wrap { display: flex; align-items: flex-start; gap: 12px; }
+.pt-wrap .head-ico { width: 46px; height: 46px; border-radius: 14px; margin-top: 4px; background: var(--navy); color: #fff; box-shadow: 0 8px 20px #07014f2a; animation: ico-in .6s var(--ease-spring) both; }
+.ch-wrap { display: flex; align-items: center; gap: 10px; }
+.surface-card:hover .ch-wrap .head-ico { transform: rotate(-6deg) scale(1.06); }
+@keyframes ico-in { from { opacity: 0; transform: scale(.5) rotate(-20deg); } }
+
+/* ======== smoother interactions ======== */
+/* page change: content glides in */
+.route-in { animation: route-in .34s var(--ease-out) both; }
+/* opacity only: a transform here would re-anchor fixed bars (field toolbar, sheets) during the fade */
+@keyframes route-in { from { opacity: 0; } to { opacity: 1; } }
+/* lists cascade in */
+.visit-list > *, .report-list > *, .action-cards > *, .branch-grid > *, .pr-list > li, .sm-list .sm-branch, .bp-list > *, .xp-grid > *, .more-grid > *, .hb-row, .pr-themes > li { animation: item-in .42s var(--ease-out) both; }
+.visit-list > :nth-child(2), .report-list > :nth-child(2), .action-cards > :nth-child(2), .branch-grid > :nth-child(2), .pr-list > li:nth-child(2), .bp-list > :nth-child(2), .xp-grid > :nth-child(2), .more-grid > :nth-child(2), .pr-themes > li:nth-child(2) { animation-delay: 40ms; }
+.visit-list > :nth-child(3), .report-list > :nth-child(3), .action-cards > :nth-child(3), .branch-grid > :nth-child(3), .pr-list > li:nth-child(3), .bp-list > :nth-child(3), .xp-grid > :nth-child(3), .more-grid > :nth-child(3), .pr-themes > li:nth-child(3) { animation-delay: 80ms; }
+.visit-list > :nth-child(4), .report-list > :nth-child(4), .action-cards > :nth-child(4), .branch-grid > :nth-child(4), .pr-list > li:nth-child(4), .bp-list > :nth-child(4), .xp-grid > :nth-child(4), .more-grid > :nth-child(4), .pr-themes > li:nth-child(4) { animation-delay: 120ms; }
+.visit-list > :nth-child(5), .report-list > :nth-child(5), .action-cards > :nth-child(5), .branch-grid > :nth-child(5), .pr-list > li:nth-child(5), .bp-list > :nth-child(5), .xp-grid > :nth-child(5), .more-grid > :nth-child(5), .pr-themes > li:nth-child(5) { animation-delay: 160ms; }
+.visit-list > :nth-child(n+6), .report-list > :nth-child(n+6), .action-cards > :nth-child(n+6), .branch-grid > :nth-child(n+6), .pr-list > li:nth-child(n+6), .bp-list > :nth-child(n+6), .more-grid > :nth-child(n+6), .pr-themes > li:nth-child(n+6) { animation-delay: 200ms; }
+@keyframes item-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+/* every tappable row answers the finger */
+.visit-row, .report-row, .branch-tile, .sm-branch, .hb-row, .bp-report, .pr-row, .sm-chips button, .br-regions button, .bp-tabs button, .pr-tabs button, .segmented button, .text-link, .facade-btn, .bp-pick, .xp-mail > summary, .sm-crumbs button {
+  transition: transform .18s var(--ease-spring), background-color .2s, box-shadow .25s, color .2s, border-color .2s; -webkit-tap-highlight-color: transparent; }
+.visit-row:active, .report-row:active, .branch-tile:active, .sm-branch:active, .hb-row:active, .bp-report:active, .pr-row:active { transform: scale(.985); background-color: var(--corn-soft); }
+.sm-chips button:active, .br-regions button:active, .bp-tabs button:active, .pr-tabs button:active, .segmented button:active, .text-link:active, .facade-btn:active, .sm-crumbs button:active { transform: scale(.94); }
+@media (hover: hover) and (pointer: fine) {
+  .visit-row:hover, .report-row:hover, .branch-tile:hover, .hb-row:hover, .bp-report:hover { transform: translateY(-1px); }
+  .surface-card { transition: box-shadow .3s, transform .3s var(--ease-out); }
+  .surface-card:hover { box-shadow: 0 12px 30px #07014f12; }
+  .button:hover:not(:disabled) { transform: translateY(-1px); }
+}
+.visit-chevron { transition: transform .25s var(--ease-spring); } .visit-row:active .visit-chevron, .visit-row:hover .visit-chevron { transform: translateX(-4px); }
+/* inputs: soft focus glow */
+input, select, textarea { transition: border-color .2s, box-shadow .25s, background-color .2s; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { box-shadow: 0 0 0 4px #7584f733; border-color: var(--corn) !important; outline: none; }
+/* expanding sections open softly */
+details[open] > :not(summary) { animation: item-in .3s var(--ease-out) both; }
+/* theme switch fades instead of flashing */
+body, .topbar, .surface-card, .bottom-nav, .side-rail { transition: background-color .35s, color .35s, border-color .35s; }
+/* scores and badges pop in */
+.visit-score, .sm-score, .hb-score, .score-dot, .count-badge, .xp-tile-ico, .facade-ico, .bp-r-ico { animation: pop-in .5s var(--ease-spring) both; }
+@keyframes pop-in { from { opacity: 0; transform: scale(.6); } }
+/* severity / status chips get icons */
+.severity-tag::before, .not-synced::before { content: ""; display: inline-block; width: 12px; height: 12px; margin-inline-end: 4px; vertical-align: -2px; background: currentColor; -webkit-mask: var(--ico) center / contain no-repeat; mask: var(--ico) center / contain no-repeat; }
+.severity-tag.critical { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z'/%3E%3Cpath d='M12 8v4M12 16h.01'/%3E%3C/svg%3E"); }
+.severity-tag.major { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3'/%3E%3Cpath d='M12 9v4M12 17h.01'/%3E%3C/svg%3E"); }
+.severity-tag.minor { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4M12 8h.01'/%3E%3C/svg%3E"); }
+.not-synced { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 13v8M4 14.9A7 7 0 1 1 15.7 8h1.8a4.5 4.5 0 0 1 2.5 8.2'/%3E%3Cpath d='m8 17 4-4 4 4'/%3E%3C/svg%3E"); }
+@media (prefers-reduced-motion: reduce) {
+  .route-in, .pt-wrap .head-ico, .visit-list > *, .report-list > *, .action-cards > *, .branch-grid > *, .pr-list > li, .sm-list .sm-branch, .bp-list > *, .xp-grid > *, .more-grid > *, .hb-row, .pr-themes > li, details[open] > :not(summary), .visit-score, .sm-score, .hb-score, .score-dot, .count-badge, .xp-tile-ico, .facade-ico, .bp-r-ico { animation: none !important; }
+}
+.visit-state { display: flex !important; align-items: center; gap: 4px; flex-wrap: nowrap; white-space: nowrap; }
+.wf-ico { flex: none; }
+.visit-state.wf-approved .wf-ico { color: #1f7a4d; } .visit-state.wf-submitted .wf-ico { color: #3a46c4; } .visit-state.wf-returned .wf-ico { color: #c43b32; } .visit-state.wf-draft .wf-ico { color: #b66f4a; }
+.filter-chip { display: inline-flex; align-items: center; gap: 5px; }
+.filter-chip svg { opacity: .75; } .filter-chip.active svg { opacity: 1; }

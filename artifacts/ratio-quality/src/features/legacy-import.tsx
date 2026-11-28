@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { HeadIcon } from './page-icons';
 import { list, put, type Inspection } from '../data';
 import { audit, isQualityLead, useProfile } from '../session';
 import { cloudEnabled } from '../cloud';
@@ -27,7 +28,7 @@ export function LegacyImportCard({ onDone }: { onDone: () => Promise<void> | voi
     setBusy(false);
   };
   return <section className="surface-card settings-card legacy-import">
-    <div className="card-heading"><div><span className="eyebrow">السجل التاريخي</span><h2>استيراد تقارير سابقة</h2></div></div>
+    <div className="card-heading"><div className="ch-wrap"><HeadIcon text="استيراد تقارير سابقة السجل التاريخي"/><div><span className="eyebrow">السجل التاريخي</span><h2>استيراد تقارير سابقة</h2></div></div></div>
     <p className="small-muted">اختر ملف التقارير السابقة المجهّز (‎.json). تُضاف كتقارير معتمدة للقراءة فقط مع صورها وملاحظاتها، ولا تدخل في متوسط الالتزام.</p>
     <label className="button button-soft li-pick"><input type="file" accept=".json,application/json" hidden onChange={e => { pick(e.target.files?.[0]); e.currentTarget.value = ''; }} data-testid="input-legacy-file"/>اختيار الملف</label>
     {pack && <div className="li-list"><b>{pack.reports.length} تقرير في الملف · {fresh.length} جديد</b>

@@ -1,5 +1,6 @@
 // Estimated cloud storage used by visits and their photos, against the free Firestore quota (1 GiB).
 import { useEffect, useMemo, useState } from 'react';
+import { HeadIcon } from './page-icons';
 import { Database } from 'lucide-react';
 import { mediaStats, type Inspection } from '../data';
 
@@ -25,7 +26,7 @@ export function CloudUsageCard({ inspections }: { inspections: Inspection[] }) {
   const u = useMemo(() => estimateUsage(inspections, media), [inspections, media]);
   const tone = u.pct >= 80 ? 'bad' : u.pct >= 60 ? 'warn' : 'ok';
   return <section className="surface-card settings-card cloud-usage">
-    <div className="card-heading"><div><span className="eyebrow">السحابة</span><h2>المساحة المستخدمة</h2></div><Database size={20}/></div>
+    <div className="card-heading"><div className="ch-wrap"><HeadIcon text="المساحة المستخدمة السحابة"/><div><span className="eyebrow">السحابة</span><h2>المساحة المستخدمة</h2></div></div><Database size={20}/></div>
     <div className={`cu-bar ${tone}`}><i style={{ width: `${Math.min(100, Math.max(1.5, u.pct))}%` }}/></div>
     <div className="cu-row"><b>{fmt(u.used)} من 1 GB</b><span>{u.pct < 1 ? 'أقل من 1%' : `${Math.round(u.pct)}%`}</span></div>
     <p className="small-muted">{u.visits} زيارة · {u.photoCount} صورة. تكفي المساحة المتبقية لقرابة {u.photosLeft.toLocaleString('en')} صورة أخرى.{u.pct >= 80 ? ' اقتربت المساحة من الامتلاء: يلزم ترقية خطة Firebase أو أرشفة الصور القديمة.' : ''}</p>
